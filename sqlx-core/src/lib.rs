@@ -22,7 +22,7 @@ mod runtime;
 #[macro_use]
 pub mod error;
 
-#[cfg(any(feature = "mysql", feature = "postgres"))]
+#[cfg(any(feature = "mysql", feature = "postgres", feature = "mssql"))]
 #[macro_use]
 mod io;
 
