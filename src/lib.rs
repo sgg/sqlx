@@ -33,6 +33,10 @@ pub use sqlx_core::postgres::{self, PgConnection, PgPool, Postgres};
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
 pub use sqlx_core::sqlite::{self, Sqlite, SqliteConnection, SqlitePool};
 
+#[cfg(feature = "mssql")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mssql")))]
+pub use sqlx_core::mssql::{self, MsSql, MsSqlConnection};
+
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 pub extern crate sqlx_macros;
