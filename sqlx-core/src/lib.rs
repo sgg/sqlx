@@ -66,6 +66,8 @@ pub mod postgres;
 
 #[cfg(feature = "sqlite")]
 #[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
+pub mod sqlite;
+
 #[cfg(feature = "mssql")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mssql")))]
 pub mod mssql;

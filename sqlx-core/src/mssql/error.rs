@@ -1,5 +1,6 @@
 use crate::error::DatabaseError;
 
+#[derive(Debug)]
 pub struct MsSqlError();
 
 impl DatabaseError for MsSqlError {
