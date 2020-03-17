@@ -137,6 +137,7 @@ mod bool;
 mod bytes;
 mod float;
 mod int;
+mod numeric;
 mod record;
 mod str;
 
@@ -145,6 +146,9 @@ mod str;
 pub mod raw;
 
 #[cfg(feature = "bigdecimal")]
+mod bigdecimal;
+
+#[cfg(feature = "bigdecimal_bigint")]
 mod bigdecimal;
 
 #[cfg(feature = "chrono")]
