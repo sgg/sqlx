@@ -39,6 +39,7 @@ impl<'c> Row<'c> for MsSqlRow<'c> {
 
     fn try_get_raw<'r, I>(&'r self, index: I) -> crate::Result<Option<MsSqlValue<'c>>>
     where
+        'c: 'r,
         I: ColumnIndex<Self::Database>,
     {
         todo!()

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use futures_core::future::BoxFuture;
 
-use crate::connection::{ConnectionSource, MaybeOwnedConnection};
+use crate::connection::ConnectionSource;
 use crate::cursor::Cursor;
 use crate::executor::Execute;
 use crate::mssql::{MsSql, MsSqlArguments, MsSqlConnection, MsSqlRow};
@@ -29,10 +29,9 @@ impl<'c, 'q> Cursor<'c, 'q> for MsSqlCursor<'c, 'q> {
     }
 
     #[doc(hidden)]
-    fn from_connection<E, C>(conn: C, query: E) -> Self
+    fn from_connection<E>(conn: &'c mut MsSqlConnection, query: E) -> Self
     where
         Self: Sized,
-        C: Into<MaybeOwnedConnection<'c, MsSqlConnection>>,
         E: Execute<'q, MsSql>,
     {
         todo!()

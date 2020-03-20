@@ -9,7 +9,10 @@ use crate::mssql::{MsSql, MsSqlArguments, MsSqlCursor, MsSqlTypeInfo};
 impl Executor for super::MsSqlConnection {
     type Database = MsSql;
 
-    fn execute<'e, 'q, E: 'e>(&'e mut self, query: E) -> BoxFuture<'e, crate::Result<u64>>
+    fn execute<'e, 'q: 'e, 'c: 'e, E: 'e>(
+        &'c mut self,
+        query: E,
+    ) -> BoxFuture<'e, crate::Result<u64>>
     where
         E: Execute<'q, Self::Database>,
     {

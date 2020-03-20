@@ -33,23 +33,6 @@ pub enum PreloginOption {
     },
     FedAuthRequired(u8),
     NonceOpt([u8; 32]),
-// TODO: SSL_PAYLOAD
-pub struct Prelogin {
-    options: Vec<(PreloginOption, Vec<u8>)>,
-}
-
-pub enum PreloginOption {
-    Some {
-        token: u8,
-        // BigEndian
-        offset: u16,
-        // BigEndian
-        len: u16,
-    },
-    None {
-        // ALWAYS 0xFF
-        terminator: u8,
-    },
 }
 
 pub struct Version {
