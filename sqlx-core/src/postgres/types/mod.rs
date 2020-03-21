@@ -137,7 +137,6 @@ mod bool;
 mod bytes;
 mod float;
 mod int;
-mod numeric;
 mod record;
 mod str;
 

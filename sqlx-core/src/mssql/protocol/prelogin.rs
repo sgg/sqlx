@@ -23,10 +23,8 @@ pub struct Prelogin<'de> {
 // This isn't specified in the encoding part, but the way PreloginOptions are encoded is by first
 // encoding the PreloginOptionToken PreloginOptionDataOffset PreloginOptionDataLength of each option first.
 // Then, encoding the data part of each token afterwards.
-// TODO: Use slice for `InStopT`
-// TODO: Use u128 for `conn_id` and `activity`
 pub enum PreloginOption<'de> {
-    Encryption(u8),
+    Encryption(Encryption),
     InStopT(&'de [u8]),
     ThreadId(u32),
     Mars(u8),
@@ -43,6 +41,34 @@ pub struct Version {
     major: u8,
     minor: u8,
     build: u16,
+}
+
+#[derive(Copy, Clone)]
+pub enum Encryption {
+    Off = 0x00,
+    On = 0x01,
+    NotSupported = 0x02,
+    Required = 0x03,
+    ClientCertEncryptionOff = 0x80,
+    ClientCertEncryptionOn = 0x81,
+    ClientCertEncryptionReq = 0x83,
+}
+
+impl<'de> Decode<'de> for Encryption {
+    fn decode(buf: &'de [u8]) -> Result<Self> {
+        use Encryption::*;
+
+        match buf[0] {
+            0x00 => Ok(Off),
+            0x01 => Ok(On),
+            0x02 => Ok(NotSupported),
+            0x03 => Ok(Required),
+            0x80 => Ok(ClientCertEncryptionOff),
+            0x81 => Ok(ClientCertEncryptionOn),
+            0x83 => Ok(ClientCertEncryptionReq),
+            v => Err(protocol_err!("Received unsupported encryption value: {:?}", v).into()),
+        }
+    }
 }
 
 impl<'de> Encode for Prelogin<'de> {
@@ -126,7 +152,7 @@ impl<'de> Encode for Prelogin<'de> {
             use PreloginOption::*;
 
             match opt {
-                Encryption(enc) => buf.push(*enc),
+                Encryption(enc) => buf.push(*enc as u8),
                 InStopT(vec) => {
                     buf.extend_from_slice(&vec);
                     // IntStopT vec *must* be followed by a 0x00 byte which is included in the offset
@@ -164,8 +190,6 @@ impl<'de> Decode<'de> for Prelogin<'de> {
         let mut version = None;
         let mut options: Vec<PreloginOption> = Vec::new();
 
-        use PreloginOption::*;
-
         // Step by 5 because each token 5 bytes long
         for i in (0usize..).step_by(5) {
             // The first is the token, then offset, then length
@@ -184,26 +208,30 @@ impl<'de> Decode<'de> for Prelogin<'de> {
                         build: BigEndian::read_u16(&buf[offset + 2..]),
                     });
                 }
-                (0x01, offset, length) => options.push(Encryption(buf[offset])),
+                (0x01, offset, length) => options.push(PreloginOption::Encryption(
+                    Encryption::decode(&buf[offset..])?,
+                )),
                 (0x02, offset, length) => {
-                    options.push(InStopT(&buf[offset..offset + length]));
+                    options.push(PreloginOption::InStopT(&buf[offset..offset + length]));
                 }
-                (0x03, offset, length) => {
-                    options.push(ThreadId(BigEndian::read_u32(&buf[offset..])))
-                }
-                (0x04, offset, length) => options.push(Mars(buf[offset])),
+                (0x03, offset, length) => options.push(PreloginOption::ThreadId(
+                    BigEndian::read_u32(&buf[offset..]),
+                )),
+                (0x04, offset, length) => options.push(PreloginOption::Mars(buf[offset])),
                 (0x05, offset, length) => {
-                    options.push(TraceId {
+                    options.push(PreloginOption::TraceId {
                         conn_id: BigEndian::read_u128(&buf[offset..]),
                         activity: BigEndian::read_u128(&buf[offset + 16..]),
                         seq_id: BigEndian::read_u32(&buf[offset + 32..]),
                     });
                 }
-                (0x06, offset, length) => options.push(FedAuthRequired(buf.get_u8()?)),
+                (0x06, offset, length) => {
+                    options.push(PreloginOption::FedAuthRequired(buf.get_u8()?))
+                }
                 (0x07, offset, length) => {
                     let mut nonce = [0u8; 32];
                     nonce.copy_from_slice(&buf[offset..offset + 32]);
-                    options.push(NonceOpt(nonce));
+                    options.push(PreloginOption::NonceOpt(nonce));
                 }
                 (TERMINATOR, _, _) => break,
                 v => return Err(protocol_err!("Received unprocessable token type {:?}", v).into()),
