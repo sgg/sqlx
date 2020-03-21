@@ -9,6 +9,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(all(test, feature = "bench"), feature(test))]
 // #![warn(missing_docs)]
+// TODO: Remove this when going public
+#![allow(dead_code, unused)]
 
 #[cfg(all(test, feature = "bench"))]
 extern crate test;
