@@ -81,8 +81,8 @@ pub enum PacketType {
     PreLogin = 18,
 }
 
-impl Decode for PacketType {
-    fn decode(mut buf: &[u8]) -> Result<Self> {
+impl<'de> Decode<'de> for PacketType {
+    fn decode(mut buf: &'de [u8]) -> Result<Self> {
         match buf.get_u8()? {
             1 => Ok(PacketType::SqlBatch),
             2 => Ok(PacketType::PreTds7Login),
@@ -153,8 +153,8 @@ impl Encode for PacketHeader {
     }
 }
 
-impl Decode for PacketHeader {
-    fn decode(mut buf: &[u8]) -> Result<Self> {
+impl<'de> Decode<'de> for PacketHeader {
+    fn decode(mut buf: &'de [u8]) -> Result<Self> {
         Ok(Self {
             r#type: PacketType::decode(&buf)?,
             status: Status::from_bits_truncate(buf.get_u8()?),

@@ -9,27 +9,30 @@ use crate::Result;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
+use std::io;
 
-static TERMINATOR: u8 = 0xFF;
+const TERMINATOR: u8 = 0xFF;
 
 // TODO: SSL_PAYLOAD
-pub struct Prelogin {
+pub struct Prelogin<'de> {
     // Version is a `PreLoginOption`, but since it's required it's moved out of the `Prelogion.options`
     version: Version,
-    options: Vec<PreloginOption>,
+    options: Vec<PreloginOption<'de>>,
 }
 
 // This isn't specified in the encoding part, but the way PreloginOptions are encoded is by first
 // encoding the PreloginOptionToken PreloginOptionDataOffset PreloginOptionDataLength of each option first.
 // Then, encoding the data part of each token afterwards.
-pub enum PreloginOption {
+// TODO: Use slice for `InStopT`
+// TODO: Use u128 for `conn_id` and `activity`
+pub enum PreloginOption<'de> {
     Encryption(u8),
-    InStopT(Vec<u8>),
+    InStopT(&'de [u8]),
     ThreadId(u32),
     Mars(u8),
     TraceId {
-        conn_id: [u8; 16],
-        activity: [u8; 16],
+        conn_id: u128,
+        activity: u128,
         seq_id: u32,
     },
     FedAuthRequired(u8),
@@ -42,7 +45,7 @@ pub struct Version {
     build: u16,
 }
 
-impl Encode for Prelogin {
+impl<'de> Encode for Prelogin<'de> {
     fn encode(&self, buf: &mut Vec<u8>) {
         // The way PacketHeader is handled here is we encode the entire packet header right away.
         // Then after encoding the packet itself we take the entire length of what we wrote,
@@ -136,8 +139,8 @@ impl Encode for Prelogin {
                     activity,
                     seq_id,
                 } => {
-                    buf.extend_from_slice(&conn_id[..]);
-                    buf.extend_from_slice(&activity[..]);
+                    buf.extend_from_slice(&conn_id.to_be_bytes()[..]);
+                    buf.extend_from_slice(&activity.to_be_bytes()[..]);
                     buf.put_u32::<LittleEndian>(*seq_id);
                 }
                 FedAuthRequired(auth) => buf.push(*auth),
@@ -154,35 +157,60 @@ impl Encode for Prelogin {
 
 // We need to be able to decode a PreLogin packet because it is what the server response with
 // to a PreLogin request. However, the packet type is not 0x12, but 0x4 in the response.
-impl Decode for Prelogin {
-    fn decode(mut buf: &[u8]) -> Result<Self> {
+impl<'de> Decode<'de> for Prelogin<'de> {
+    fn decode(mut buf: &'de [u8]) -> Result<Self> {
         let header = PacketHeader::decode(&buf)?;
 
         let mut version = None;
         let mut options: Vec<PreloginOption> = Vec::new();
-        loop {
-            match buf.get_u8()? {
-                0x00 => {
-                    let offset = buf.get_u16::<BigEndian>()?;
-                    let _length = buf.get_u16::<BigEndian>()?;
 
+        use PreloginOption::*;
+
+        // Step by 5 because each token 5 bytes long
+        for i in (0usize..).step_by(5) {
+            // The first is the token, then offset, then length
+            // This is only untrue for the token `TERMINATOR` since it doesn't have an offset nor length.
+            // However since the token VERSION is required and is at least 4 bytes we can still call
+            // BigEndian::read_u16 because the data does exist, it's just not valid for terminator.
+            match (
+                buf[i],
+                BigEndian::read_u16(&buf[i + 1..]) as usize,
+                BigEndian::read_u16(&buf[i + 3..]) as usize,
+            ) {
+                (0x00, offset, length) => {
                     version = Some(Version {
-                        major: buf[offset as usize],
+                        major: buf[offset],
                         minor: buf[(offset + 1) as usize],
-                        build: BigEndian::read_u16(&buf[(offset + 2) as usize..]),
+                        build: BigEndian::read_u16(&buf[offset + 2..]),
                     });
                 }
-                0x01 => todo!(),
-                0x02 => todo!(),
-                0x03 => todo!(),
-                0x04 => todo!(),
-                0x05 => todo!(),
-                0x06 => todo!(),
-                0x07 => todo!(),
+                (0x01, offset, length) => options.push(Encryption(buf[offset])),
+                (0x02, offset, length) => {
+                    options.push(InStopT(&buf[offset..offset + length]));
+                }
+                (0x03, offset, length) => {
+                    options.push(ThreadId(BigEndian::read_u32(&buf[offset..])))
+                }
+                (0x04, offset, length) => options.push(Mars(buf[offset])),
+                (0x05, offset, length) => {
+                    options.push(TraceId {
+                        conn_id: BigEndian::read_u128(&buf[offset..]),
+                        activity: BigEndian::read_u128(&buf[offset + 16..]),
+                        seq_id: BigEndian::read_u32(&buf[offset + 32..]),
+                    });
+                }
+                (0x06, offset, length) => options.push(FedAuthRequired(buf.get_u8()?)),
+                (0x07, offset, length) => {
+                    let mut nonce = [0u8; 32];
+                    nonce.copy_from_slice(&buf[offset..offset + 32]);
+                    options.push(NonceOpt(nonce));
+                }
+                (TERMINATOR, _, _) => break,
                 v => return Err(protocol_err!("Received unprocessable token type {:?}", v).into()),
             }
         }
 
+        // Version is *REQUIRED* to be set
         let version =
             version.ok_or(protocol_err!("Didn't receive version when one is expected"))?;
 
