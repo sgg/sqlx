@@ -19,7 +19,7 @@ pub struct MsSqlRow<'c> {
 }
 
 impl<'c> TryFrom<Option<MsSqlValue<'c>>> for MsSqlValue<'c> {
-    type Error = crate::Error;
+    type Error = crate::Error<MsSql>;
 
     #[inline]
     fn try_from(value: Option<MsSqlValue<'c>>) -> Result<Self, Self::Error> {
@@ -37,9 +37,8 @@ impl<'c> Row<'c> for MsSqlRow<'c> {
         todo!()
     }
 
-    fn try_get_raw<'r, I>(&'r self, index: I) -> crate::Result<Option<MsSqlValue<'c>>>
+    fn try_get_raw<I>(&self, index: I) -> crate::Result<MsSql, Option<MsSqlValue<'c>>>
     where
-        'c: 'r,
         I: ColumnIndex<Self::Database>,
     {
         todo!()

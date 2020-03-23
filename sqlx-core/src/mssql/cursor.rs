@@ -37,7 +37,7 @@ impl<'c, 'q> Cursor<'c, 'q> for MsSqlCursor<'c, 'q> {
         todo!()
     }
 
-    fn next(&mut self) -> BoxFuture<crate::Result<Option<MsSqlRow<'_>>>> {
+    fn next(&mut self) -> BoxFuture<crate::Result<MsSql, Option<MsSqlRow<'_>>>> {
         todo!()
     }
 }

@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use crate::mssql::MsSql;
 use futures_core::future::BoxFuture;
 use crate::connection::{Connect, Connection};
 use crate::executor::Executor;
@@ -11,15 +12,15 @@ pub struct MsSqlConnection {
 }
 
 impl MsSqlConnection {
-    pub(super) async fn new(_url: crate::Result<Url>) -> crate::Result<Self> {
+    pub(super) async fn new(_url: std::result::Result<Url, url::ParseError>) -> crate::Result<MsSql, Self> {
         Ok(MsSqlConnection{})
     }
 }
 
 impl Connect for MsSqlConnection {
-    fn connect<T>(url: T) -> BoxFuture<'static, crate::Result<MsSqlConnection>>
+    fn connect<T>(url: T) -> BoxFuture<'static, crate::Result<MsSql, MsSqlConnection>>
     where
-        T: TryInto<Url, Error = crate::Error>,
+        T: TryInto<Url, Error = url::ParseError>,
         Self: Sized,
     {
         Box::pin(MsSqlConnection::new(url.try_into()))
@@ -27,13 +28,13 @@ impl Connect for MsSqlConnection {
 }
 
 impl Connection for MsSqlConnection {
-    fn close(self) -> BoxFuture<'static, crate::Result<()>> {
+    fn close(self) -> BoxFuture<'static, crate::Result<MsSql, ()>> {
         Box::pin(async move {
             Ok(())
         })
     }
 
-    fn ping(&mut self) -> BoxFuture<crate::Result<()>> {
+    fn ping(&mut self) -> BoxFuture<crate::Result<MsSql, ()>> {
         Box::pin(async move {
             Ok(())
         })

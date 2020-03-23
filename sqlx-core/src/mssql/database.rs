@@ -1,6 +1,7 @@
 use crate::database::{Database, HasCursor, HasRawValue, HasRow};
 
 /// **MsSql** database driver.
+#[derive(Debug)]
 pub struct MsSql;
 
 impl Database for MsSql {
@@ -13,6 +14,8 @@ impl Database for MsSql {
     type TableId = Box<str>;
 
     type RawBuffer = Vec<u8>;
+
+    type Error = super::MsSqlError;
 }
 
 impl<'c> HasRow<'c> for MsSql {

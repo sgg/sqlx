@@ -29,7 +29,7 @@ impl<'de, T> Decode<'de, MsSql> for Option<T>
 where
     T: Decode<'de, MsSql>,
 {
-    fn decode(value: Option<MsSqlValue<'de>>) -> crate::Result<Self> {
+    fn decode(value: Option<MsSqlValue<'de>>) -> crate::Result<MsSql, Self> {
         value
             .map(|value| <T as Decode<MsSql>>::decode(Some(value)))
             .transpose()

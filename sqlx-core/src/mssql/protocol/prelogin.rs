@@ -5,7 +5,6 @@ use super::PacketHeader;
 use super::PacketType;
 use crate::io::Buf;
 use crate::io::BufMut;
-use crate::Result;
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use byteorder::LittleEndian;
@@ -55,7 +54,7 @@ pub enum Encryption {
 }
 
 impl<'de> Decode<'de> for Encryption {
-    fn decode(buf: &'de [u8]) -> Result<Self> {
+    fn decode(buf: &'de [u8]) -> crate::Result<MsSql, Self> {
         use Encryption::*;
 
         match buf[0] {
@@ -184,7 +183,7 @@ impl<'de> Encode for Prelogin<'de> {
 // We need to be able to decode a PreLogin packet because it is what the server response with
 // to a PreLogin request. However, the packet type is not 0x12, but 0x4 in the response.
 impl<'de> Decode<'de> for Prelogin<'de> {
-    fn decode(mut buf: &'de [u8]) -> Result<Self> {
+    fn decode(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
         let header = PacketHeader::decode(&buf)?;
 
         let mut version = None;
