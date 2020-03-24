@@ -1,79 +1,4 @@
-pub struct OffsetLength {
-    // ibHostname & cchHostName: The client machine name.
-    pub ib_hostname: u16,
-    pub cch_hostname: u16,
-
-    // ibUserName & cchUserName: The client user ID
-    pub ib_username: u16,
-    pub cch_username: u16,
-
-    // ibPassword & cchPassword: The password supplied by the client
-    pub ib_password: u16,
-    pub cch_password: u16,
-
-    // ibAppName & cchAppName: The client application name.
-    pub ib_appname: u16,
-    pub cch_appname: u16,
-
-    // ibServerName & cchServerName: The server name.
-    pub ib_servername: u16,
-    pub cch_servername: u16,
-
-    // ibExtension & cbExtension: This points to an extension block. Introduced in TDS7.4 when fExtension is 1. The content pointed by ibExtension is defined as follows:
-    //
-    //      ibFeatureExtLong    =  DWORD
-    //      Extension           =  ibFeatureExtLong
-    //
-    // ibFeatureExtLong provides the offset (from the start of the message) of FeatureExt block.
-    // ibFeatureExtLong MUST be 0 if FeatureExt block does not exist.
-    //
-    // Extension block can be extended in future. The client MUST NOT send more data than needed.
-    // The server SHOULD ignore any appended data that is unknown to the server.
-    pub ib_extension: u16,
-    pub cb_extension: u16,
-
-    // ibCltIntName & cchCltIntName: The interface library name (ODBC or OLEDB).
-    pub ib_clt_int_name: u16,
-    pub cch_clt_int_name: u16,
-
-    // ibLanguage & cchLanguage: The initial language (overrides the user ID's default language).
-    pub ib_language: u16,
-    pub cch_language: u16,
-
-    // ibDatabase & cchDatabase: The initial database (overrides the user ID's default database).
-    pub ib_database: u16,
-    pub cch_database: u16,
-
-    // ClientID: The unique client ID (created by using the NIC address). ClientID is the MAC
-    // address of the physical network layer. It is used to identify the client that is connecting
-    // to the server. This value is mainly informational, and no processing steps on the server
-    // side use it.
-    pub client_id: [u8; 6],
-
-    // ibSSPI & cbSSPI: SSPI data.
-    //
-    // If cbSSPI < USHORT_MAX, then this length MUST be used for SSPI and cbSSPILong MUST be ignored.
-    //
-    // If cbSSPI == USHORT_MAX, then cbSSPILong MUST be checked.
-    //
-    // If cbSSPILong > 0, then that value MUST be used. If cbSSPILong ==0, then cbSSPI (USHORT_MAX)
-    // MUST be used.
-    pub ib_sspi: u16,
-    pub cch_sspi: u16,
-
-    // ibAtchDBFile & cchAtchDBFile: The file name for a database that is to be attached during
-    // the connection process.
-    //      - ibChangePassword & cchChangePassword: New password for the specified login.
-    //        Introduced in TDS 7.2.
-    //      - cbSSPILong: Used for large SSPI data when cbSSPI==USHORT_MAX. Introduced in TDS 7.2
-    pub ib_atch_db_file: u16,
-    pub cch_atch_db_file: u16,
-
-    // The actual variable-length data portion referred to by OffsetLength
-    pub ib_change_password: u16,
-    pub cch_change_password: u16,
-    pub cb_sspi_long: u32,
-}
+use bitflags::bitflags;
 
 // All variable-length fields in the login record are optional. This means that the length of the
 // field can be specified as 0. If the length is specified as 0, then the offset MUST be ignored.
@@ -81,8 +6,9 @@ pub struct OffsetLength {
 // variable-length data in the login record even in the case where no variable-length
 // data is included.
 pub struct Login<'a> {
+    // Derived when encoding
     // The total length of the LOGIN7 structure.
-    pub length: u32,
+    // pub length: u32,
 
     // The highest TDS version being used by the client (for example, 0x00000071 for TDS 7.1).
     // If the TDSVersion value sent by the client is greater than the value that the server
@@ -90,10 +16,11 @@ pub struct Login<'a> {
     // a mechanism for clients to discover the server TDS by sending a standard LOGIN7 message.
     // If the TDSVersion value sent by the client is lower than the highest TDS version the
     // server recognizes, the server MUST use the TDS version sent by the client.
-    pub tds_version: u32,
+    // pub tds_version: u32,
 
+    // Derived when encoding
     // The packet size being requested by the client.
-    pub packet_size: u32,
+    // pub packet_size: u32,
 
     // The version of the interface library (for example, ODBC or OLEDB) being used by the client.
     pub client_prog_version: u32,
@@ -118,11 +45,97 @@ pub struct Login<'a> {
     // NOTE: The ClientLCID value is no longer used to set language parameters and is ignored.
     pub client_lcid: u32,
 
+    // Derived when encoding
     // The variable portion of this message. A stream of bytes in the order shown, indicates the
     // offset (from the start of the message) and length of various parameters:
-    pub offset_length: OffsetLength,
-    pub data: &'a [u8],
+    // pub offset_length: OffsetLength,
+    // pub data: &'a [u8],
     pub feature_ext: Option<FeatureOpt<'a>>,
+}
+
+impl<'a> Encode for Login<'a> {
+    fn encode(&self, buf: &mut Vec<u8>) -> Self {
+        // Pointer to beginning of message
+        let start = buf.len();
+
+        // Placeholder for length
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // packet_size
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // client_pid
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // conneciton_id
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        buf.extend_from_slice(&self.option_flags1.bits().as_bytes());
+        buf.extend_from_slice(&self.option_flags2.bits().as_bytes());
+        buf.extend_from_slice(&self.type_flags.bits().as_bytes());
+
+        // client_timezone
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // client_lcid
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // hostname offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // username offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // password offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // appname offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // servername offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // extension offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // ctl_int_name offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // language offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // database offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // clientid
+        buf.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+
+        // sspi offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // atch_db_file offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // change_password offset and length
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&[0, 0]);
+
+        // sspi_long offset and length
+        buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // TODO: actual data
+    }
 }
 
 bitflags! {
@@ -233,6 +246,84 @@ bitflags! {
         // TDS version supported by the server is lower than TDS 7.4.
         pub const READ_ONLY_INTENT: 0x20,
     }
+}
+
+pub struct OffsetLength {
+    // ibHostname & cchHostName: The client machine name.
+    pub ib_hostname: u16,
+    pub cch_hostname: u16,
+
+    // ibUserName & cchUserName: The client user ID
+    pub ib_username: u16,
+    pub cch_username: u16,
+
+    // ibPassword & cchPassword: The password supplied by the client
+    pub ib_password: u16,
+    pub cch_password: u16,
+
+    // ibAppName & cchAppName: The client application name.
+    pub ib_appname: u16,
+    pub cch_appname: u16,
+
+    // ibServerName & cchServerName: The server name.
+    pub ib_servername: u16,
+    pub cch_servername: u16,
+
+    // ibExtension & cbExtension: This points to an extension block. Introduced in TDS7.4
+    // when fExtension is 1. The content pointed by ibExtension is defined as follows:
+    //
+    //      ibFeatureExtLong    =  DWORD
+    //      Extension           =  ibFeatureExtLong
+    //
+    // ibFeatureExtLong provides the offset (from the start of the message) of FeatureExt block.
+    // ibFeatureExtLong MUST be 0 if FeatureExt block does not exist.
+    //
+    // Extension block can be extended in future. The client MUST NOT send more data than needed.
+    // The server SHOULD ignore any appended data that is unknown to the server.
+    pub ib_extension: u16,
+    pub cb_extension: u16,
+
+    // ibCltIntName & cchCltIntName: The interface library name (ODBC or OLEDB).
+    pub ib_clt_int_name: u16,
+    pub cch_clt_int_name: u16,
+
+    // ibLanguage & cchLanguage: The initial language (overrides the user ID's default language).
+    pub ib_language: u16,
+    pub cch_language: u16,
+
+    // ibDatabase & cchDatabase: The initial database (overrides the user ID's default database).
+    pub ib_database: u16,
+    pub cch_database: u16,
+
+    // ClientID: The unique client ID (created by using the NIC address). ClientID is the MAC
+    // address of the physical network layer. It is used to identify the client that is connecting
+    // to the server. This value is mainly informational, and no processing steps on the server
+    // side use it.
+    pub client_id: [u8; 6],
+
+    // ibSSPI & cbSSPI: SSPI data.
+    //
+    // If cbSSPI < USHORT_MAX, then this length MUST be used for SSPI and cbSSPILong MUST be ignored.
+    //
+    // If cbSSPI == USHORT_MAX, then cbSSPILong MUST be checked.
+    //
+    // If cbSSPILong > 0, then that value MUST be used. If cbSSPILong ==0, then cbSSPI (USHORT_MAX)
+    // MUST be used.
+    pub ib_sspi: u16,
+    pub cch_sspi: u16,
+
+    // ibAtchDBFile & cchAtchDBFile: The file name for a database that is to be attached during
+    // the connection process.
+    //      - ibChangePassword & cchChangePassword: New password for the specified login.
+    //        Introduced in TDS 7.2.
+    //      - cbSSPILong: Used for large SSPI data when cbSSPI==USHORT_MAX. Introduced in TDS 7.2
+    pub ib_atch_db_file: u16,
+    pub cch_atch_db_file: u16,
+
+    // The actual variable-length data portion referred to by OffsetLength
+    pub ib_change_password: u16,
+    pub cch_change_password: u16,
+    pub cb_sspi_long: u32,
 }
 
 bitflags! {
