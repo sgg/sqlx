@@ -2,6 +2,7 @@ mod decode;
 mod encode;
 mod packet_header;
 mod prelogin;
+mod login;
 
 pub use decode::Decode;
 pub use encode::Encode;

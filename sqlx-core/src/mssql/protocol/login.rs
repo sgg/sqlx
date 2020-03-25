@@ -1,4 +1,16 @@
+use super::Encode;
+use super::PacketHeader;
+use super::PacketType;
 use bitflags::bitflags;
+
+const HOSTNAME_OFFSET: usize = 0;
+const USERNAME_OFFSET: usize = 4;
+const PASSWORD_OFFSET: usize = 8;
+const SERVERNAME_OFFSET: usize = 16;
+const EXTENSION_OFFSET: usize = 20;
+const DATABASE_OFFSET: usize = 32;
+const UTF8_SUPPORT_FEATURE: u8 = 0xA0;
+const TERMINATOR: u8 = 0xFF;
 
 // All variable-length fields in the login record are optional. This means that the length of the
 // field can be specified as 0. If the length is specified as 0, then the offset MUST be ignored.
@@ -50,16 +62,38 @@ pub struct Login<'a> {
     // offset (from the start of the message) and length of various parameters:
     // pub offset_length: OffsetLength,
     // pub data: &'a [u8],
+
+    pub hostname: &'a str,
+    pub username: &'a str,
+
+    // Before submitting a password from the client to the server, for every byte in the password 
+    // buffer starting with the position pointed to by ibPassword or ibChangePassword, the client 
+    // SHOULD first swap the four high bits with the four low bits and then do a bit-XOR with 
+    // 0xA5 (10100101). After reading a submitted password; for every byte in the password buffer 
+    // starting with the position pointed to by ibPassword or ibChangePassword, the server SHOULD 
+    // first do a bit-XOR with 0xA5 (10100101) and then swap the four high bits with the 
+    // four low bits.
+    pub password: &'a str,
+    pub servername: &'a str,
+    pub database: &'a str,
+
     pub feature_ext: Option<FeatureOpt<'a>>,
 }
 
 impl<'a> Encode for Login<'a> {
-    fn encode(&self, buf: &mut Vec<u8>) -> Self {
+    fn encode(&self, buf: &mut Vec<u8>) {
         // Pointer to beginning of message
         let start = buf.len();
+        let header = PacketHeader::new(PacketType::Tds7Login);
+        header.encode(buf);
+
+        let mut offset = 56u16;
 
         // Placeholder for length
         buf.extend_from_slice(&[0, 0, 0, 0]);
+
+        // tds_version
+        buf.extend_from_slice(&74u32.to_be_bytes());
 
         // packet_size
         buf.extend_from_slice(&[0, 0, 0, 0]);
@@ -70,9 +104,9 @@ impl<'a> Encode for Login<'a> {
         // conneciton_id
         buf.extend_from_slice(&[0, 0, 0, 0]);
 
-        buf.extend_from_slice(&self.option_flags1.bits().as_bytes());
-        buf.extend_from_slice(&self.option_flags2.bits().as_bytes());
-        buf.extend_from_slice(&self.type_flags.bits().as_bytes());
+        buf.push(self.option_flags1.bits());
+        buf.push(self.option_flags2.bits());
+        buf.push(self.type_flags.bits());
 
         // client_timezone
         buf.extend_from_slice(&[0, 0, 0, 0]);
@@ -80,87 +114,75 @@ impl<'a> Encode for Login<'a> {
         // client_lcid
         buf.extend_from_slice(&[0, 0, 0, 0]);
 
-        // hostname offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        // OffsetLength strruct as bytes initialized to 0's
+        // Updated later whe needed
+        buf.extend_from_slice(&[0u8; 56]);
 
-        // username offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        buf[HOSTNAME_OFFSET..HOSTNAME_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
+        buf[HOSTNAME_OFFSET + 2..HOSTNAME_OFFSET + 4].copy_from_slice(&(self.hostname.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&self.hostname.as_bytes());
+        offset += self.hostname.as_bytes().len() as u16;
 
-        // password offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        buf[USERNAME_OFFSET..USERNAME_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
+        buf[USERNAME_OFFSET + 2..USERNAME_OFFSET + 4].copy_from_slice(&(self.username.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&self.username.as_bytes());
+        offset += self.username.as_bytes().len() as u16;
 
-        // appname offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        buf[PASSWORD_OFFSET..PASSWORD_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
+        buf[PASSWORD_OFFSET + 2..PASSWORD_OFFSET + 4].copy_from_slice(&(self.password.len() as u16).to_be_bytes());
+        offset += self.password.as_bytes().len() as u16;
+        buf.extend(self.password.as_bytes().iter().map(|byte| {
+            let hi = byte & 0xF0;
+            let byte = byte << 4;
+            let byte = byte & (hi >> 4);
+            byte ^ 0xA5
+        }));
 
-        // servername offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        // Update `Extension` to point to FeatureExt
+        buf[EXTENSION_OFFSET..EXTENSION_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
+        buf[EXTENSION_OFFSET + 2..EXTENSION_OFFSET + 4].copy_from_slice(&(4u16).to_be_bytes());
+        offset += 4;
 
-        // extension offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        // FeatureExt: Utf8 Support Required
+        buf.push(UTF8_SUPPORT_FEATURE);
+        buf.extend_from_slice(&1u32.to_be_bytes());
+        buf.push(1);
 
-        // ctl_int_name offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        buf.push(TERMINATOR);
 
-        // language offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
+        // Set length field on the Login structure
+        let len = buf.len() - 8 - start;
+        buf[start + 8..start + 8 + 4].copy_from_slice(&(len as u32).to_be_bytes());
 
-        // database offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
-
-        // clientid
-        buf.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
-
-        // sspi offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
-
-        // atch_db_file offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
-
-        // change_password offset and length
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&[0, 0]);
-
-        // sspi_long offset and length
-        buf.extend_from_slice(&[0, 0, 0, 0]);
-
-        // TODO: actual data
+        // Set packet_header length field
+        let len = buf.len() - start;
+        buf[start..start + 4].copy_from_slice(&(len as u32).to_be_bytes());
     }
 }
 
 bitflags! {
-    pub struct OptionFlags1 {
+    pub struct OptionFlags1: u8 {
         // fByteOrder: The byte order used by client for numeric and datetime data types.
         //      - 0 = ORDER_X86
         //      - 1 = ORDER_68000
-        pub const BYTE_ORDER: 0x01,
+        const BYTE_ORDER = 0x01;
 
         // fChar: The character set used on the client.
         //      - 0 = CHARSET_ASCII
         //      - 1 = CHARSET_EBCDIC
-        pub const CHAR: 0x02,
+        const CHAR = 0x02;
 
         // fFloat: The type of floating point representation used by the client.
         //      - 0 = FLOAT_IEEE_754
         //      - 1 = FLOAT_VAX
         //      - 2 = ND5000
-        pub const FLOAT_LOW: 0x04,
-        pub const FLOAT_HI: 0x08,
+        const FLOAT_LOW = 0x04;
+        const FLOAT_HI = 0x08;
 
         // fDumpLoad: Set is dump/load or BCP capabilities are needed by the client.
         //      - 0 = DUMPLOAD_ON
         //      - 1 = DUMPLOAD_OFF
-        pub const DUMP_LOAD: 0x10,
+        const DUMP_LOAD = 0x10;
 
         // fUseDB: Set if the client requires warning messages on execution of the USE SQL
         // statement. If this flag is not set, the server MUST NOT inform the client when
@@ -168,83 +190,83 @@ bitflags! {
         // collation changes.
         //      - 0 = USE_DB_OFF
         //      - 1 = USE_DB_ON
-        pub const USE_DB: 0x20,
+        const USE_DB = 0x20;
 
         // fDatabase: Set if the change to initial database needs to succeed if the connection is
         // to succeed.
         //      - 0 = INIT_DB_WARN
         //      - 1 = INIT_DB_FATAL
-        pub const DATABASE: 0x40,
+        const DATABASE = 0x40;
 
         // fSetLang: Set if the client requires warning messages on execution of a language
         // change statement.
         //      - 0 = SET_LANG_OFF
         //      - 1 = SET_LANG_ON
-        pub const SET_LANG: 0x80,
+        const SET_LANG = 0x80;
     }
 }
 
 bitflags! {
-    pub struct OptionFlags2 {
+    pub struct OptionFlags2: u8 {
         // fLanguage: Set if the change to initial language needs to succeed if the connect is
         // to succeed.
         //      - 0 = INIT_LANG_WARN
         //      - 1 = INIT_LANG_FATAL
-        pub const LANGUAGE: 0x01,
+        const LANGUAGE = 0x01;
 
         // fODBC: Set if the client is the ODBC driver. This causes the server to set
         // ANSI_DEFAULTS to ON, CURSOR_CLOSE_ON_COMMIT and IMPLICIT_TRANSACTIONS to OFF, TEXTSIZE
-        // to 0x7FFFFFFF (2GB) (TDS 7.2 and earlier), TEXTSIZE to infinite
+        // to 0x7FFFFFFF (2GB) (TDS 7.2 and earlier); TEXTSIZE to infinite
         // (introduced in TDS 7.3), and ROWCOUNT to infinite.
         //      - 0 = ODBC_OFF
         //      - 1 = ODBC_ON
-        pub const ODBC: 0x02,
+        const ODBC = 0x02;
 
         // fTransBoundary
-        pub const TRAN_BOUNDRY: 0x04,
+        const TRAN_BOUNDRY = 0x04;
 
         // fCacheConnect
-        pub const CACHE_CONNECT: 0x08,
+        const CACHE_CONNECT = 0x08;
 
         // fUserType: The type of user connecting to the server.
         //      - 0 = USER_NORMAL --regular logins
         //      - 1 = USER_SERVER --reserved
         //      - 2 = USER_REMUSER --Distributed Query login
         //      - 3 = USER_SQLREPL --replication login
-        pub const USER_TYPE_1: 0x10,
-        pub const USER_TYPE_2: 0x20,
-        pub const USER_TYPE_3: 0x40,
+        const USER_TYPE_1 = 0x10;
+        const USER_TYPE_2 = 0x20;
+        const USER_TYPE_3 = 0x40;
 
         // fIntSecurity: The type of security required by the client.
         //      - 0 = INTEGRATED_SECURTY_OFF
         //      - 1 = INTEGRATED_SECURITY_ON
-        pub const INT_SECURITY: 0x80,
+        const INT_SECURITY = 0x80;
     }
 }
 
 bitflags! {
-    pub struct TypeFlags {
+    pub struct TypeFlags: u8 {
         // fSQLType: The type of SQL the client sends to the server.
         //      - 0 = SQL_DFLT
         //      - 1 = SQL_TSQL
-        pub const SQL_TYPE_4: 0x01,
-        pub const SQL_TYPE_3: 0x02,
-        pub const SQL_TYPE_2: 0x04,
-        pub const SQL_TYPE_1: 0x08,
+        const SQL_TYPE_4 = 0x01;
+        const SQL_TYPE_3 = 0x02;
+        const SQL_TYPE_2 = 0x04;
+        const SQL_TYPE_1 = 0x08;
 
         // fOLEDB: Set if the client is the OLEDB driver. This causes the server to set
         // ANSI_DEFAULTS to ON, CURSOR_CLOSE_ON_COMMIT and IMPLICIT_TRANSACTIONS to OFF, TEXTSIZE
-        // to 0x7FFFFFFF (2GB) (TDS 7.2 and earlier), TEXTSIZE to infinite
+        // to 0x7FFFFFFF (2GB) (TDS 7.2 and earlier); TEXTSIZE to infinite
         // (introduced in TDS 7.3), and ROWCOUNT to infinite.
         //      - 0 = OLEDB_OFF
         //      - 1 = OLEDB_ON
-        pub const OLE_DB: 0x10,
+        const OLE_DB = 0x10;
 
         // fReadOnlyIntent: This bit was introduced in TDS 7.4; however, TDS 7.1, 7.2, and
         // 7.3 clients can also use this bit in LOGIN7 to specify that the application intent
         // of the connection is read-only. The server SHOULD ignore this bit if the highest
         // TDS version supported by the server is lower than TDS 7.4.
-        pub const READ_ONLY_INTENT: 0x20,
+        const READ_ONLY_INTENT = 0x20;
     }
 }
 
@@ -327,17 +349,17 @@ pub struct OffsetLength {
 }
 
 bitflags! {
-    pub struct OptionFlags3 {
+    pub struct OptionFlags3: u8 {
         // fChangePassword: Specifies whether the login request SHOULD change password.
         //      - 0 = No change request. ibChangePassword MUST be 0.
         //      - 1 = Request to change login's password.
-        pub const CHANGE_PASSWORD: 0x01,
+        const CHANGE_PASSWORD = 0x01;
 
         // fSendYukonBinaryXML: 1 if XML data type instances are returned as binary XML.
-        pub const USER_INSTANCE: 0x20,
+        const USER_INSTANCE = 0x20;
 
         // fUserInstance: 1 if client is requesting separate process to be spawned as user instance.
-        pub const SEND_YUKON_BINARY_XML: 0x40,
+        const SEND_YUKON_BINARY_XML = 0x40;
 
         // fUnknownCollationHandling: This bit is used by the server to determine if a client is
         // able to properly handle collations introduced after TDS 7.2. TDS 7.2 and earlier
@@ -351,13 +373,13 @@ bitflags! {
         //      - 1 = The server MAY send any collation that fits in the storage space. The client
         //            MUST be able to both properly support collations and gracefully fail for those
         //            it does not support.
-        pub const UNKNOWN_COLLATION_HANDLING: 0x80,
+        const UNKNOWN_COLLATION_HANDLING = 0x80;
 
         // fExtension: Specifies whether ibExtension/cbExtension fields are used.
         //      - 0 = ibExtension/cbExtension fields are not used. The fields are treated the
         //            same as ibUnused/cchUnused.
         //      - 1 = ibExtension/cbExtension fields are used.
-        pub const EXTENSION: 0x10,
+        const EXTENSION = 0x10;
     }
 }
 
