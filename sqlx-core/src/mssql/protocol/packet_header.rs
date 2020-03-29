@@ -1,11 +1,12 @@
 use super::super::MsSql;
-use super::Decode;
 use super::Encode;
 use crate::io::Buf;
 use crate::io::BufMut;
 use bitflags::bitflags;
 use byteorder::BigEndian;
+use byteorder::LittleEndian;
 
+#[derive(Debug)]
 pub struct PacketHeader {
     // Type defines the type of message. Typeis a 1-byte unsigned char. The following table
     // describes the types that are available.
@@ -57,15 +58,19 @@ impl PacketHeader {
         Self {
             r#type,
             status: Status::NORMAL,
-            length: 0x2F00,
+            length: 0,
             packet: 1,
             spid: 0,
             window: 0,
         }
     }
+
+    pub const fn size() -> usize {
+        8
+    }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PacketType {
     SqlBatch = 1,
     PreTds7Login = 2,
@@ -80,21 +85,21 @@ pub enum PacketType {
     PreLogin = 18,
 }
 
-impl<'de> Decode<'de> for PacketType {
-    fn decode(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
-        match buf.get_u8()? {
-            1 => Ok(PacketType::SqlBatch),
-            2 => Ok(PacketType::PreTds7Login),
-            3 => Ok(PacketType::Rpc),
-            4 => Ok(PacketType::TabularResult),
-            6 => Ok(PacketType::AttentionSignal),
-            7 => Ok(PacketType::BulkLoadData),
-            8 => Ok(PacketType::FederatedAuthToken),
-            14 => Ok(PacketType::TransactionManagerRequest),
-            16 => Ok(PacketType::Tds7Login),
-            17 => Ok(PacketType::Sspi),
-            18 => Ok(PacketType::PreLogin),
-            v => Err(protocol_err!("Unrecognized PacketType {:?}", v).into()),
+impl From<u8> for PacketType {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => PacketType::SqlBatch,
+            2 => PacketType::PreTds7Login,
+            3 => PacketType::Rpc,
+            4 => PacketType::TabularResult,
+            6 => PacketType::AttentionSignal,
+            7 => PacketType::BulkLoadData,
+            8 => PacketType::FederatedAuthToken,
+            14 => PacketType::TransactionManagerRequest,
+            16 => PacketType::Tds7Login,
+            17 => PacketType::Sspi,
+            18 => PacketType::PreLogin,
+            v => panic!("Unrecognized PacketType {:?}", v),
         }
     }
 }
@@ -152,10 +157,10 @@ impl Encode for PacketHeader {
     }
 }
 
-impl<'de> Decode<'de> for PacketHeader {
-    fn decode(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
+impl PacketHeader {
+    pub(crate) fn read(mut buf: &[u8]) -> crate::Result<MsSql, Self> {
         Ok(Self {
-            r#type: PacketType::decode(&buf)?,
+            r#type: PacketType::from(buf.get_u8()?),
             status: Status::from_bits_truncate(buf.get_u8()?),
             length: buf.get_u16::<BigEndian>()?,
             spid: buf.get_u16::<BigEndian>()?,

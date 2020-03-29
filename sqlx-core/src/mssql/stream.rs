@@ -3,7 +3,7 @@ use std::net::Shutdown;
 use byteorder::{ByteOrder, LittleEndian};
 
 use crate::io::{Buf, BufMut, BufStream, MaybeTlsStream};
-use crate::mssql::protocol::{Encode, Decode, Prelogin, PacketHeader};
+use crate::mssql::protocol::{Encode, PacketHeader, Prelogin};
 use crate::mssql::MsSql;
 use crate::mssql::MsSqlError;
 use crate::url::Url;
@@ -64,18 +64,20 @@ impl MsSqlStream {
 
     pub(super) async fn read(&mut self) -> crate::Result<MsSql, ()> {
         let header = self.stream.peek(8_usize).await?;
-        dbg!(header);
+        dbg!(&header);
 
-        let header = PacketHeader::decode(header.clone())?;
+        let header = PacketHeader::read(header.clone())?;
+        dbg!(&header);
+
         let length = header.length;
 
         self.stream.consume(8);
 
-        let payload = self.stream.peek(length as usize - 8).await?;
+        let payload = self.stream.peek(18).await?;
         dbg!(payload);
         self.packet = payload.to_vec();
 
-        self.stream.consume(length as usize - 8);
+        self.stream.consume(length as usize);
 
         Ok(())
     }

@@ -1,10 +1,11 @@
-mod decode;
-mod encode;
+mod login;
 mod packet_header;
 mod prelogin;
-mod login;
 
-pub use decode::Decode;
-pub use encode::Encode;
+pub use login::Login;
 pub use packet_header::{PacketHeader, PacketType, Status};
-pub use prelogin::{Prelogin, PreloginOption, Encryption, Version};
+pub use prelogin::{Encryption, Prelogin, PreloginOption, Version};
+
+pub trait Encode {
+    fn encode(&self, buf: &mut Vec<u8>);
+}

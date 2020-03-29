@@ -1,13 +1,16 @@
 use super::Encode;
 use super::PacketHeader;
 use super::PacketType;
+use super::Status;
 use bitflags::bitflags;
 
 const HOSTNAME_OFFSET: usize = 0;
 const USERNAME_OFFSET: usize = 4;
 const PASSWORD_OFFSET: usize = 8;
+const APPNAME_OFFSET: usize = 12;
 const SERVERNAME_OFFSET: usize = 16;
 const EXTENSION_OFFSET: usize = 20;
+const CTLINTNAME_OFFSET: usize = 24;
 const DATABASE_OFFSET: usize = 32;
 const UTF8_SUPPORT_FEATURE: u8 = 0xA0;
 const TERMINATOR: u8 = 0xFF;
@@ -35,131 +38,205 @@ pub struct Login<'a> {
     // pub packet_size: u32,
 
     // The version of the interface library (for example, ODBC or OLEDB) being used by the client.
-    pub client_prog_version: u32,
+    // pub client_prog_version: u32,
 
     // The process ID of the client application.
-    pub client_pid: u32,
+    // pub client_pid: u32,
 
     // The connection ID of the primary Server. Used when connecting to an "Always Up" backup server.
-    pub connection_id: u32,
+    // pub connection_id: u32,
 
-    pub option_flags1: OptionFlags1,
-    pub option_flags2: OptionFlags2,
-    pub type_flags: TypeFlags,
+    // pub option_flags1: OptionFlags1,
+    // pub option_flags2: OptionFlags2,
+    // pub type_flags: TypeFlags,
 
     // This field is not used and can be set to zero
-    pub client_timezone: i32,
+    // pub client_timezone: i32,
 
     // The language code identifier (LCID) value for the client collation. If ClientLCID is
     // specified, the specified collation is set as the session collation. Note that the total
     // ClientLCID is 4 bytes, which implies that there is no support for SQL Sort orders.
     //
     // NOTE: The ClientLCID value is no longer used to set language parameters and is ignored.
-    pub client_lcid: u32,
+    // pub client_lcid: u32,
 
     // Derived when encoding
     // The variable portion of this message. A stream of bytes in the order shown, indicates the
     // offset (from the start of the message) and length of various parameters:
     // pub offset_length: OffsetLength,
     // pub data: &'a [u8],
-
     pub hostname: &'a str,
     pub username: &'a str,
+    pub database: &'a str,
+    pub appname: &'a str,
+    pub ctlintname: &'a str,
 
-    // Before submitting a password from the client to the server, for every byte in the password 
-    // buffer starting with the position pointed to by ibPassword or ibChangePassword, the client 
-    // SHOULD first swap the four high bits with the four low bits and then do a bit-XOR with 
-    // 0xA5 (10100101). After reading a submitted password; for every byte in the password buffer 
-    // starting with the position pointed to by ibPassword or ibChangePassword, the server SHOULD 
-    // first do a bit-XOR with 0xA5 (10100101) and then swap the four high bits with the 
+    // Before submitting a password from the client to the server, for every byte in the password
+    // buffer starting with the position pointed to by ibPassword or ibChangePassword, the client
+    // SHOULD first swap the four high bits with the four low bits and then do a bit-XOR with
+    // 0xA5 (10100101). After reading a submitted password; for every byte in the password buffer
+    // starting with the position pointed to by ibPassword or ibChangePassword, the server SHOULD
+    // first do a bit-XOR with 0xA5 (10100101) and then swap the four high bits with the
     // four low bits.
     pub password: &'a str,
-    pub servername: &'a str,
-    pub database: &'a str,
-
-    pub feature_ext: Option<FeatureOpt<'a>>,
+    // pub feature_ext: Option<FeatureOpt<'a>>,
 }
 
 impl<'a> Encode for Login<'a> {
     fn encode(&self, buf: &mut Vec<u8>) {
-        // Set byte order to ORDER_68000 which should mean BigEndian
-        // self.option_flags1.set(OptionFlags1::BYTE_ORDER, true);
+        /// 10 01 00 90 00 00 01 00 88 00          10 01 00 90 00 00 01 00 88 00                                       
+        /// 00 00 02 00 09 72 00 10 00 00          00 00 04 00 00 74 00 10 00 00                                       
+        /// 00 00 00 07 00 01 00 00 00 00          00 00 00 07 00 01 00 00 00 00                                       
+        /// 00 00 E0 03 00 00 E0 01 00 00          00 00 E0 03 00 00 E0 01 00 00                                       
+        /// 09 04 00 00 5E 00 08 00 6E 00          09 04 00 00 5E 00 08 00 66 00                                       
+        /// 02 00 72 00 00 00 72 00 07 00          02 00 00 00 00 00 68 00 07 00                                       
+        /// 80 00 00 00 80 00 00 00 80 00          00 00 00 00 00 00 00 00 6F 00                                       
+        /// 04 00 88 00 00 00 88 00 00 00          04 00 00 00 00 00 00 00 00 00                                       
+        /// 00 50 8B E2 B7 8F 88 00 00 00          00 00 00 00 00 00 00 00 00 00                                       
+        /// 88 00 00 00 88 00 00 00 00 00          00 00 00 00 00 00 00 00 00 00                                       
+        /// 00 00 73 00 6B 00 6F 00 73 00          00 00 73 00 6B 00 6F 00 73 00                                       
+        /// 74 00 6F 00 76 00 31 00 73 00          74 00 6F 00 76 00 31 00 73 00                    
+        /// 61 00 4F 00 53 00 51 00 4C 00          61 00 4F 00 53 00 51 00 4C 00                    
+        /// 2D 00 33 00 32 00 4F 00 44 00          2D 00 33 00 32 00 4F 00 44 00                    
+        /// 42 00 43 00                            42 00 43 00                             
 
         // Pointer to beginning of message
         let start = buf.len();
-        let header = PacketHeader::new(PacketType::Tds7Login);
+        let mut header = PacketHeader::new(PacketType::Tds7Login);
+        header.status = Status::END_OF_MESSAGE;
+
         header.encode(buf);
 
-        let mut offset = 56u16;
+        let mut offset = OffsetLength::size() + 36;
 
-        // Placeholder for length
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        #[rustfmt::skip]
+        buf.extend_from_slice(&[
+            // Placeholder for length
+            0, 0, 0, 0,
+            // tds_version: SQL Server 2012 | SQL Server 2014 | SQL Server 2016 | SQL Server 2017 | SQL Server 2019
+            0x04, 0, 0, 0x74,
+            // packet_size
+            0, 0x10, 0, 0,
+            // client_prog_version
+            0, 0, 0, 7,
+            // client_pid
+            0, 1, 0, 0,
+            // conneciton_id
+            0, 0, 0, 0,
+        ]);
 
-        // tds_version: SQL Server 2012 | SQL Server 2014 | SQL Server 2016 | SQL Server 2017 | SQL Server 2019
-        buf.extend_from_slice(&[0x04, 0, 0, 0x74]);
+        buf.push(OptionFlags1::default().bits());
+        buf.push(OptionFlags2::default().bits());
+        buf.push(TypeFlags::default().bits());
+        buf.push(OptionFlags3::default().bits());
 
-        // packet_size
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        #[rustfmt::skip]
+        buf.extend_from_slice(&[
+            // client_timezone
+            0xE0, 1, 0, 0,
+            // client_lcid
+            9, 4, 0, 0
+        ]);
 
-        // client_pid
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        // OffsetLength struct as bytes initialized to 0's
+        // Updated later when needed
+        buf.extend_from_slice(&[0u8; OffsetLength::size() as usize]);
 
-        // conneciton_id
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        println!("{:X?}", buf);
+        println!("{}", buf.len());
+        println!("{}", HOSTNAME_OFFSET + PacketHeader::size() + 36);
+        println!("{}", offset);
 
-        buf.push(self.option_flags1.bits());
-        buf.push(self.option_flags2.bits());
-        buf.push(self.type_flags.bits());
+        buf[HOSTNAME_OFFSET + PacketHeader::size() + 36
+            ..HOSTNAME_OFFSET + PacketHeader::size() + 36 + 2]
+            .copy_from_slice(&offset.to_le_bytes());
+        buf[HOSTNAME_OFFSET + PacketHeader::size() + 36 + 2
+            ..HOSTNAME_OFFSET + PacketHeader::size() + 36 + 4]
+            .copy_from_slice(&(self.hostname.len()  as u16).to_le_bytes());
+        for (i, &byte) in self.hostname.as_bytes().iter().enumerate() {
+            buf.push(byte);
+            buf.push(0);
+        }
+        offset += self.hostname.as_bytes().len() as u16 * 2;
 
-        // client_timezone
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        buf[USERNAME_OFFSET + PacketHeader::size() + 36
+            ..USERNAME_OFFSET + PacketHeader::size() + 36 + 2]
+            .copy_from_slice(&offset.to_le_bytes());
+        buf[USERNAME_OFFSET + PacketHeader::size() + 36 + 2
+            ..USERNAME_OFFSET + PacketHeader::size() + 36 + 4]
+            .copy_from_slice(&(self.username.len()  as u16).to_le_bytes());
+        for (i, &byte) in self.username.as_bytes().iter().enumerate() {
+            buf.push(byte);
+            buf.push(0);
+        }
+        offset += self.username.as_bytes().len() as u16 * 2;
 
-        // client_lcid
-        buf.extend_from_slice(&[0, 0, 0, 0]);
+        buf[APPNAME_OFFSET + PacketHeader::size() + 36
+            ..APPNAME_OFFSET + PacketHeader::size() + 36 + 2]
+            .copy_from_slice(&offset.to_le_bytes());
+        buf[APPNAME_OFFSET + PacketHeader::size() + 36 + 2
+            ..APPNAME_OFFSET + PacketHeader::size() + 36 + 4]
+            .copy_from_slice(&(self.appname.len()  as u16).to_le_bytes());
+        for (i, &byte) in self.appname.as_bytes().iter().enumerate() {
+            buf.push(byte);
+            buf.push(0);
+        }
+        offset += self.appname.as_bytes().len() as u16 * 2;
 
-        // OffsetLength strruct as bytes initialized to 0's
-        // Updated later whe needed
-        buf.extend_from_slice(&[0u8; 56]);
+        buf[CTLINTNAME_OFFSET + PacketHeader::size() + 36
+            ..CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 2]
+            .copy_from_slice(&offset.to_le_bytes());
+        buf[CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 2
+            ..CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 4]
+            .copy_from_slice(&(self.ctlintname.len()  as u16).to_le_bytes());
+        for (i, &byte) in self.ctlintname.as_bytes().iter().enumerate() {
+            buf.push(byte);
+            buf.push(0);
+        }
+        offset += self.appname.as_bytes().len() as u16 * 2;
 
-        buf[HOSTNAME_OFFSET..HOSTNAME_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
-        buf[HOSTNAME_OFFSET + 2..HOSTNAME_OFFSET + 4].copy_from_slice(&(self.hostname.len() as u16).to_be_bytes());
-        buf.extend_from_slice(&self.hostname.as_bytes());
-        offset += self.hostname.as_bytes().len() as u16;
+        // buf[PASSWORD_OFFSET + PacketHeader::size() + 36..PASSWORD_OFFSET + PacketHeader::size() + 36 + 2]
+        //     .copy_from_slice(&offset.to_be_bytes());
+        // buf[PASSWORD_OFFSET + PacketHeader::size() + 36 + 2..PASSWORD_OFFSET + PacketHeader::size() + 36 + 4]
+        //     .copy_from_slice(&(self.password.len() as u16 * 2).to_be_bytes());
+        // offset += self.password.as_bytes().len() as u16;
+        // for (i, byte) in self.password.as_bytes().iter().enumerate() {
+        //     // Swap high-low bits
+        //     let byte = (byte << 4) | (byte >> 4);
+        //     // XOR with 0xA5
+        //     let byte = byte ^ 0xA5u8;
+        //     buf.push(byte);
+        //     buf.push(0);
+        // }
 
-        buf[USERNAME_OFFSET..USERNAME_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
-        buf[USERNAME_OFFSET + 2..USERNAME_OFFSET + 4].copy_from_slice(&(self.username.len() as u16).to_be_bytes());
-        buf.extend_from_slice(&self.username.as_bytes());
-        offset += self.username.as_bytes().len() as u16;
+        // // Update `Extension` to point to FeatureExt
+        // buf[EXTENSION_OFFSET + PacketHeader::size()..EXTENSION_OFFSET + PacketHeader::size() + 2]
+        //     .copy_from_slice(&offset.to_be_bytes());
+        // buf[EXTENSION_OFFSET + PacketHeader::size() + 2
+        //     ..EXTENSION_OFFSET + PacketHeader::size() + 4]
+        //     .copy_from_slice(&(4u16).to_be_bytes());
+        // offset += 4;
 
-        buf[PASSWORD_OFFSET..PASSWORD_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
-        buf[PASSWORD_OFFSET + 2..PASSWORD_OFFSET + 4].copy_from_slice(&(self.password.len() as u16).to_be_bytes());
-        offset += self.password.as_bytes().len() as u16;
-        buf.extend(self.password.as_bytes().iter().map(|byte| {
-            let hi = byte & 0xF0;
-            let byte = byte << 4;
-            let byte = byte & (hi >> 4);
-            byte ^ 0xA5
-        }));
+        // // FeatureExt: Utf8 Support Required
+        // buf.push(UTF8_SUPPORT_FEATURE);
+        // buf.extend_from_slice(&1u32.to_be_bytes());
+        // buf.push(1);
 
-        // Update `Extension` to point to FeatureExt
-        buf[EXTENSION_OFFSET..EXTENSION_OFFSET + 2].copy_from_slice(&offset.to_be_bytes());
-        buf[EXTENSION_OFFSET + 2..EXTENSION_OFFSET + 4].copy_from_slice(&(4u16).to_be_bytes());
-        offset += 4;
-
-        // FeatureExt: Utf8 Support Required
-        buf.push(UTF8_SUPPORT_FEATURE);
-        buf.extend_from_slice(&1u32.to_be_bytes());
-        buf.push(1);
-
-        buf.push(TERMINATOR);
+        // buf.push(TERMINATOR);
 
         // Set length field on the Login structure
-        let len = buf.len() - 8 - start;
-        buf[start + 8..start + 8 + 4].copy_from_slice(&(len as u32).to_be_bytes());
+        let len = ((buf.len() - start - PacketHeader::size()) as u32).to_be_bytes();
+        buf[start + PacketHeader::size() + 0] = len[3];
+        buf[start + PacketHeader::size() + 1] = len[2];
+        buf[start + PacketHeader::size() + 2] = len[1];
+        buf[start + PacketHeader::size() + 3] = len[0];
 
-        // Set packet_header length field
+        // Set length field on the PacketHeader structure
         let len = buf.len() - start;
-        buf[start..start + 4].copy_from_slice(&(len as u32).to_be_bytes());
+        buf[start + 2..start + 4].copy_from_slice(&(len as u16).to_be_bytes());
+
+        println!("{}", hex::encode(&buf));
+        dbg!(buf.len());
     }
 }
 
@@ -209,6 +286,12 @@ bitflags! {
     }
 }
 
+impl Default for OptionFlags1 {
+    fn default() -> Self {
+        OptionFlags1::from_bits_truncate(0xE0)
+    }
+}
+
 bitflags! {
     pub struct OptionFlags2: u8 {
         // fLanguage: Set if the change to initial language needs to succeed if the connect is
@@ -247,15 +330,21 @@ bitflags! {
     }
 }
 
+impl Default for OptionFlags2 {
+    fn default() -> Self {
+        OptionFlags2::from_bits_truncate(0x03)
+    }
+}
+
 bitflags! {
     pub struct TypeFlags: u8 {
         // fSQLType: The type of SQL the client sends to the server.
         //      - 0 = SQL_DFLT
         //      - 1 = SQL_TSQL
-        const SQL_TYPE_4 = 0x01;
-        const SQL_TYPE_3 = 0x02;
-        const SQL_TYPE_2 = 0x04;
-        const SQL_TYPE_1 = 0x08;
+        const SQL_TYPE_1 = 0x01;
+        const SQL_TYPE_2 = 0x02;
+        const SQL_TYPE_3 = 0x04;
+        const SQL_TYPE_4 = 0x08;
 
         // fOLEDB: Set if the client is the OLEDB driver. This causes the server to set
         // ANSI_DEFAULTS to ON, CURSOR_CLOSE_ON_COMMIT and IMPLICIT_TRANSACTIONS to OFF, TEXTSIZE
@@ -270,6 +359,12 @@ bitflags! {
         // of the connection is read-only. The server SHOULD ignore this bit if the highest
         // TDS version supported by the server is lower than TDS 7.4.
         const READ_ONLY_INTENT = 0x20;
+    }
+}
+
+impl Default for TypeFlags {
+    fn default() -> Self {
+        TypeFlags::from_bits_truncate(0x00)
     }
 }
 
@@ -351,6 +446,12 @@ pub struct OffsetLength {
     pub cb_sspi_long: u32,
 }
 
+impl OffsetLength {
+    const fn size() -> u16 {
+        58
+    }
+}
+
 bitflags! {
     pub struct OptionFlags3: u8 {
         // fChangePassword: Specifies whether the login request SHOULD change password.
@@ -383,6 +484,12 @@ bitflags! {
         //            same as ibUnused/cchUnused.
         //      - 1 = ibExtension/cbExtension fields are used.
         const EXTENSION = 0x10;
+    }
+}
+
+impl Default for OptionFlags3 {
+    fn default() -> Self {
+        OptionFlags3::from_bits_truncate(0x00)
     }
 }
 

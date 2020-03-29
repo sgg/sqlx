@@ -1,15 +1,15 @@
-use std::convert::TryInto;
-use crate::mssql::MsSql;
-use futures_core::future::BoxFuture;
 use crate::connection::{Connect, Connection};
 use crate::executor::Executor;
-use crate::url::Url;
-use crate::mssql::stream::MsSqlStream;
-use crate::mssql::protocol::{Prelogin, PreloginOption, Encryption};
 use crate::mssql::protocol::Version;
+use crate::mssql::protocol::{Encryption, Login, PacketHeader, Prelogin, PreloginOption};
+use crate::mssql::stream::MsSqlStream;
+use crate::mssql::MsSql;
+use crate::url::Url;
+use futures_core::future::BoxFuture;
+use std::convert::TryInto;
 
 pub struct MsSqlConnection {
-// pub(super) stream: MsSqlStream,
+    // pub(super) stream: MsSqlStream,
 // pub(super) is_ready: bool,
 // pub(super) cache_statement: HashMap<Box<str>, u32>,
 }
@@ -21,7 +21,7 @@ impl MsSqlConnection {
 
         establish(&mut stream, &url).await?;
 
-        Ok(MsSqlConnection{})
+        Ok(MsSqlConnection {})
     }
 }
 
@@ -37,22 +37,32 @@ impl Connect for MsSqlConnection {
 
 impl Connection for MsSqlConnection {
     fn close(self) -> BoxFuture<'static, crate::Result<MsSql, ()>> {
-        Box::pin(async move {
-            Ok(())
-        })
+        Box::pin(async move { Ok(()) })
     }
 
     fn ping(&mut self) -> BoxFuture<crate::Result<MsSql, ()>> {
-        Box::pin(async move {
-            Ok(())
-        })
+        Box::pin(async move { Ok(()) })
     }
 }
 
 async fn establish(stream: &mut MsSqlStream, url: &Url) -> crate::Result<MsSql, ()> {
-    let prelogin = Prelogin::default();
+    stream.write(Prelogin::default());
+    stream.flush().await?;
 
-    stream.write(prelogin);
+    let packet = stream.receive().await?;
+    let prelogin_resp = Prelogin::read(packet)?;
+    dbg!(prelogin_resp);
+
+    let login = Login {
+        hostname: "skostov1",
+        username: "sa",
+        password: "",
+        database: "",
+        appname: "OSQL-32",
+        ctlintname: "ODBC",
+    };
+
+    stream.write(login);
     stream.flush().await?;
 
     let packet = stream.receive().await?;

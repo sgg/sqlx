@@ -1,9 +1,8 @@
 use super::super::MsSql;
-use super::Decode;
-use super::Status;
 use super::Encode;
 use super::PacketHeader;
 use super::PacketType;
+use super::Status;
 use crate::io::Buf;
 use crate::io::BufMut;
 use byteorder::BigEndian;
@@ -14,7 +13,7 @@ use std::io;
 const TERMINATOR: u8 = 0xFF;
 
 // TODO: SSL_PAYLOAD
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Prelogin<'de> {
     // Version is a `PreLoginOption`, but since it's required it's moved out of the `Prelogion.options`
     pub version: Version,
@@ -26,6 +25,7 @@ pub struct Prelogin<'de> {
 // This isn't specified in the encoding part, but the way PreloginOptions are encoded is by first
 // encoding the PreloginOptionToken PreloginOptionDataOffset PreloginOptionDataLength of each option first.
 // Then, encoding the data part of each token afterwards.
+#[derive(Debug)]
 pub enum PreloginOption<'de> {
     InStopT(&'de [u8]),
     ThreadId(u32),
@@ -39,13 +39,13 @@ pub enum PreloginOption<'de> {
     NonceOpt([u8; 32]),
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Version {
     pub version: u32,
     pub build: u16,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Encryption {
     Off = 0x00,
     On = 0x01,
@@ -62,8 +62,8 @@ impl Default for Encryption {
     }
 }
 
-impl<'de> Decode<'de> for Encryption {
-    fn decode(buf: &'de [u8]) -> crate::Result<MsSql, Self> {
+impl Encryption {
+    pub(crate) fn read(buf: &[u8]) -> crate::Result<MsSql, Self> {
         use Encryption::*;
 
         match buf[0] {
@@ -193,10 +193,8 @@ impl<'de> Encode for Prelogin<'de> {
 
 // We need to be able to decode a PreLogin packet because it is what the server response with
 // to a PreLogin request. However, the packet type is not 0x12, but 0x4 in the response.
-impl<'de> Decode<'de> for Prelogin<'de> {
-    fn decode(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
-        let header = PacketHeader::decode(&buf)?;
-
+impl<'de> Prelogin<'de> {
+    pub(crate) fn read(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
         let mut version = None;
         let mut encryption = None;
         let mut options: Vec<PreloginOption> = Vec::new();
@@ -219,8 +217,8 @@ impl<'de> Decode<'de> for Prelogin<'de> {
                     });
                 }
                 (0x01, offset, length) => {
-                    encryption = Some(Encryption::decode(&buf[offset..])?);
-                },
+                    encryption = Some(Encryption::read(&buf[offset..])?);
+                }
                 (0x02, offset, length) => {
                     options.push(PreloginOption::InStopT(&buf[offset..offset + length]));
                 }
@@ -253,9 +251,14 @@ impl<'de> Decode<'de> for Prelogin<'de> {
             version.ok_or(protocol_err!("Didn't receive version when one is expected"))?;
 
         // Encryption is *REQUIRED* to be set
-        let encryption =
-            encryption.ok_or(protocol_err!("Didn't receive encryption when one is expected"))?;
+        let encryption = encryption.ok_or(protocol_err!(
+            "Didn't receive encryption when one is expected"
+        ))?;
 
-        Ok(Self { version, encryption, options })
+        Ok(Self {
+            version,
+            encryption,
+            options,
+        })
     }
 }
