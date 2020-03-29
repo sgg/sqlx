@@ -17,6 +17,7 @@ mod executor;
 mod protocol;
 mod row;
 mod types;
+mod stream;
 
 /// An alias for [`Pool`], specialized for **MsSQL**.
 pub type MsSqlPool = crate::pool::Pool<MsSqlConnection>;

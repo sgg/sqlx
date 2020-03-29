@@ -1,5 +1,6 @@
 use super::super::MsSql;
 use super::Decode;
+use super::Status;
 use super::Encode;
 use super::PacketHeader;
 use super::PacketType;
@@ -13,17 +14,19 @@ use std::io;
 const TERMINATOR: u8 = 0xFF;
 
 // TODO: SSL_PAYLOAD
+#[derive(Default)]
 pub struct Prelogin<'de> {
     // Version is a `PreLoginOption`, but since it's required it's moved out of the `Prelogion.options`
-    version: Version,
-    options: Vec<PreloginOption<'de>>,
+    pub version: Version,
+    // Encryption is a `PreLoginOption`, but since it's required it's moved out of the `Prelogion.options`
+    pub encryption: Encryption,
+    pub options: Vec<PreloginOption<'de>>,
 }
 
 // This isn't specified in the encoding part, but the way PreloginOptions are encoded is by first
 // encoding the PreloginOptionToken PreloginOptionDataOffset PreloginOptionDataLength of each option first.
 // Then, encoding the data part of each token afterwards.
 pub enum PreloginOption<'de> {
-    Encryption(Encryption),
     InStopT(&'de [u8]),
     ThreadId(u32),
     Mars(u8),
@@ -36,10 +39,10 @@ pub enum PreloginOption<'de> {
     NonceOpt([u8; 32]),
 }
 
+#[derive(Default)]
 pub struct Version {
-    major: u8,
-    minor: u8,
-    build: u16,
+    pub version: u32,
+    pub build: u16,
 }
 
 #[derive(Copy, Clone)]
@@ -51,6 +54,12 @@ pub enum Encryption {
     ClientCertEncryptionOff = 0x80,
     ClientCertEncryptionOn = 0x81,
     ClientCertEncryptionReq = 0x83,
+}
+
+impl Default for Encryption {
+    fn default() -> Encryption {
+        Encryption::Off
+    }
 }
 
 impl<'de> Decode<'de> for Encryption {
@@ -78,8 +87,8 @@ impl<'de> Encode for Prelogin<'de> {
         // over the length. To put it simply, we reserve space for the header and then overwrite the
         // length after the packet has been written.
         let start = buf.len();
-
-        let header = PacketHeader::new(PacketType::PreLogin);
+        let mut header = PacketHeader::new(PacketType::PreLogin);
+        header.status = Status::END_OF_MESSAGE;
 
         header.encode(buf);
 
@@ -88,48 +97,49 @@ impl<'de> Encode for Prelogin<'de> {
         // + 1 because the version token is not within the options vector.
         // Then we add a single byte for the TERMINATOR token
         let mut offset = (self.options.len() + 1) * 5 + 1;
+        dbg!(offset);
 
-        // Version Token *MUST* be the first token so it's not part of the options vector.
-        // So, encode it first
+        // Version Token *MUST* be the first token so it's not part of the options vector. So, encode it first
         buf.push(0x00);
-        // The offset for version should be right after we encode all the token "headers"/"pointers"
         buf.put_u16::<BigEndian>(offset as u16);
-        // The length of the data for a Version token is 4 bytes
-        buf.put_u16::<BigEndian>(4);
+        buf.put_u16::<BigEndian>(6);
 
-        offset += 4;
+        offset += 6;
+
+        // Encryption Token *MUST* be provided.
+        buf.push(0x01);
+        buf.put_u16::<BigEndian>(offset as u16);
+        buf.put_u16::<BigEndian>(1);
+
+        offset += 1;
 
         for opt in self.options.iter() {
-            use PreloginOption::*;
-
-            // PL_OPTION_TOKEN
+            // pl_option_token
             buf.push(match opt {
-                Encryption(_) => 0x01,
-                InStopT(_) => 0x02,
-                ThreadId(_) => 0x03,
-                Mars(_) => 0x04,
-                TraceId { .. } => 0x05,
-                FedAuthRequired(_) => 0x06,
-                NonceOpt(_) => 0x07,
+                PreloginOption::InStopT(_) => 0x02,
+                PreloginOption::ThreadId(_) => 0x03,
+                PreloginOption::Mars(_) => 0x04,
+                PreloginOption::TraceId { .. } => 0x05,
+                PreloginOption::FedAuthRequired(_) => 0x06,
+                PreloginOption::NonceOpt(_) => 0x07,
             });
 
-            // PL_OFFSET
+            // pl_offset
             buf.put_u16::<BigEndian>(offset as u16);
 
-            // This is the length of the DATA bit for an option.
-            // We need the length because it's required in the token header,
+            // this is the length of the data bit for an option.
+            // we need the length because it's required in the token header,
             // and because we need to update offest accordingly for the next token.
             let len: u16 = match opt {
-                Encryption(_) => 1,
-                InStopT(vec) => vec.len() as u16 + 1,
-                ThreadId(_) => 4,
-                Mars(_) => 1,
-                TraceId { .. } => 36,
-                FedAuthRequired(_) => 1,
-                NonceOpt(_) => 32,
+                PreloginOption::InStopT(vec) => vec.len() as u16 + 1,
+                PreloginOption::ThreadId(_) => 4,
+                PreloginOption::Mars(_) => 1,
+                PreloginOption::TraceId { .. } => 36,
+                PreloginOption::FedAuthRequired(_) => 1,
+                PreloginOption::NonceOpt(_) => 32,
             };
 
-            // PL_OPTION_LENGTH
+            // pl_option_length
             buf.put_u16::<BigEndian>(len);
 
             offset += len as usize;
@@ -142,24 +152,23 @@ impl<'de> Encode for Prelogin<'de> {
 
         // Version encoded as the first option because that is required.
         // This is the data for the Version token
-        buf.push(self.version.major);
-        buf.push(self.version.minor);
+        buf.put_u32::<BigEndian>(self.version.version);
         buf.put_u16::<BigEndian>(self.version.build);
+
+        // Encryption
+        buf.push(self.encryption as u8);
 
         // Encode the DATA of the each option one after another
         for opt in self.options.iter() {
-            use PreloginOption::*;
-
             match opt {
-                Encryption(enc) => buf.push(*enc as u8),
-                InStopT(vec) => {
+                PreloginOption::InStopT(vec) => {
                     buf.extend_from_slice(&vec);
                     // IntStopT vec *must* be followed by a 0x00 byte which is included in the offset
                     buf.push(0);
                 }
-                ThreadId(id) => buf.put_u32::<LittleEndian>(*id),
-                Mars(mars) => buf.push(*mars),
-                TraceId {
+                PreloginOption::ThreadId(id) => buf.put_u32::<LittleEndian>(*id),
+                PreloginOption::Mars(mars) => buf.push(*mars),
+                PreloginOption::TraceId {
                     conn_id,
                     activity,
                     seq_id,
@@ -168,14 +177,16 @@ impl<'de> Encode for Prelogin<'de> {
                     buf.extend_from_slice(&activity.to_be_bytes()[..]);
                     buf.put_u32::<LittleEndian>(*seq_id);
                 }
-                FedAuthRequired(auth) => buf.push(*auth),
-                NonceOpt(nonce) => buf.extend_from_slice(&nonce[..]),
+                PreloginOption::FedAuthRequired(auth) => buf.push(*auth),
+                PreloginOption::NonceOpt(nonce) => buf.extend_from_slice(&nonce[..]),
             }
         }
 
         // Not that we've encoded the entire packet including header, go back and update the length
         // in the buffer. This should be 2 bytes from the beginning of the buffer.
         let length = ((buf.len() - start) as u16).to_be_bytes();
+
+        println!("{:X?}", &buf);
         buf[start + 2..start + 4].copy_from_slice(&length);
     }
 }
@@ -187,6 +198,7 @@ impl<'de> Decode<'de> for Prelogin<'de> {
         let header = PacketHeader::decode(&buf)?;
 
         let mut version = None;
+        let mut encryption = None;
         let mut options: Vec<PreloginOption> = Vec::new();
 
         // Step by 5 because each token 5 bytes long
@@ -202,14 +214,13 @@ impl<'de> Decode<'de> for Prelogin<'de> {
             ) {
                 (0x00, offset, length) => {
                     version = Some(Version {
-                        major: buf[offset],
-                        minor: buf[(offset + 1) as usize],
-                        build: BigEndian::read_u16(&buf[offset + 2..]),
+                        version: BigEndian::read_u32(&buf[offset..]),
+                        build: BigEndian::read_u16(&buf[offset + 4..]),
                     });
                 }
-                (0x01, offset, length) => options.push(PreloginOption::Encryption(
-                    Encryption::decode(&buf[offset..])?,
-                )),
+                (0x01, offset, length) => {
+                    encryption = Some(Encryption::decode(&buf[offset..])?);
+                },
                 (0x02, offset, length) => {
                     options.push(PreloginOption::InStopT(&buf[offset..offset + length]));
                 }
@@ -241,6 +252,10 @@ impl<'de> Decode<'de> for Prelogin<'de> {
         let version =
             version.ok_or(protocol_err!("Didn't receive version when one is expected"))?;
 
-        Ok(Self { version, options })
+        // Encryption is *REQUIRED* to be set
+        let encryption =
+            encryption.ok_or(protocol_err!("Didn't receive encryption when one is expected"))?;
+
+        Ok(Self { version, encryption, options })
     }
 }

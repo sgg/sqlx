@@ -25,7 +25,7 @@ pub struct PacketHeader {
     // packet header. Length is a 2-byte, unsigned short int and is represented in network
     // byte order (big-endian).
     //
-    // The Lengthvalue MUST be greater than or equal to 512 bytes and smaller than or equal
+    // The Length value MUST be greater than or equal to 512 bytes and smaller than or equal
     // to 32,767 bytes. The default value is 4,096 bytes.
     //
     // Starting with TDS 7.3, the Length MUST be the negotiated packet size when sending a packet
@@ -57,7 +57,7 @@ impl PacketHeader {
         Self {
             r#type,
             status: Status::NORMAL,
-            length: 0,
+            length: 0x2F00,
             packet: 1,
             spid: 0,
             window: 0,

@@ -4,6 +4,9 @@ use futures_core::future::BoxFuture;
 use crate::connection::{Connect, Connection};
 use crate::executor::Executor;
 use crate::url::Url;
+use crate::mssql::stream::MsSqlStream;
+use crate::mssql::protocol::{Prelogin, PreloginOption, Encryption};
+use crate::mssql::protocol::Version;
 
 pub struct MsSqlConnection {
 // pub(super) stream: MsSqlStream,
@@ -12,7 +15,12 @@ pub struct MsSqlConnection {
 }
 
 impl MsSqlConnection {
-    pub(super) async fn new(_url: std::result::Result<Url, url::ParseError>) -> crate::Result<MsSql, Self> {
+    pub async fn new(url: std::result::Result<Url, url::ParseError>) -> crate::Result<MsSql, Self> {
+        let url = url?;
+        let mut stream = MsSqlStream::new(&url).await?;
+
+        establish(&mut stream, &url).await?;
+
         Ok(MsSqlConnection{})
     }
 }
@@ -39,4 +47,15 @@ impl Connection for MsSqlConnection {
             Ok(())
         })
     }
+}
+
+async fn establish(stream: &mut MsSqlStream, url: &Url) -> crate::Result<MsSql, ()> {
+    let prelogin = Prelogin::default();
+
+    stream.write(prelogin);
+    stream.flush().await?;
+
+    let packet = stream.receive().await?;
+
+    Ok(())
 }

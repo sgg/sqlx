@@ -82,6 +82,9 @@ pub struct Login<'a> {
 
 impl<'a> Encode for Login<'a> {
     fn encode(&self, buf: &mut Vec<u8>) {
+        // Set byte order to ORDER_68000 which should mean BigEndian
+        // self.option_flags1.set(OptionFlags1::BYTE_ORDER, true);
+
         // Pointer to beginning of message
         let start = buf.len();
         let header = PacketHeader::new(PacketType::Tds7Login);
@@ -92,8 +95,8 @@ impl<'a> Encode for Login<'a> {
         // Placeholder for length
         buf.extend_from_slice(&[0, 0, 0, 0]);
 
-        // tds_version
-        buf.extend_from_slice(&74u32.to_be_bytes());
+        // tds_version: SQL Server 2012 | SQL Server 2014 | SQL Server 2016 | SQL Server 2017 | SQL Server 2019
+        buf.extend_from_slice(&[0x04, 0, 0, 0x74]);
 
         // packet_size
         buf.extend_from_slice(&[0, 0, 0, 0]);
