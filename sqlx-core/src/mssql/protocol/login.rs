@@ -11,7 +11,12 @@ const APPNAME_OFFSET: usize = 12;
 const SERVERNAME_OFFSET: usize = 16;
 const EXTENSION_OFFSET: usize = 20;
 const CTLINTNAME_OFFSET: usize = 24;
+const LANGUAGE_OFFSET: usize = 28;
 const DATABASE_OFFSET: usize = 32;
+const CLIENTID_OFFSET: usize = 36;
+const SSPI_OFFSET: usize = 42;
+const ATTATCHFILE_OFFSET: usize = 46;
+const CHANGEPASSWORD_OFFSET: usize = 50;
 const UTF8_SUPPORT_FEATURE: u8 = 0xA0;
 const TERMINATOR: u8 = 0xFF;
 
@@ -70,6 +75,7 @@ pub struct Login<'a> {
     pub database: &'a str,
     pub appname: &'a str,
     pub ctlintname: &'a str,
+    pub servername: &'a str,
 
     // Before submitting a password from the client to the server, for every byte in the password
     // buffer starting with the position pointed to by ibPassword or ibChangePassword, the client
@@ -84,29 +90,15 @@ pub struct Login<'a> {
 
 impl<'a> Encode for Login<'a> {
     fn encode(&self, buf: &mut Vec<u8>) {
-        /// 10 01 00 90 00 00 01 00 88 00          10 01 00 90 00 00 01 00 88 00                                       
-        /// 00 00 02 00 09 72 00 10 00 00          00 00 04 00 00 74 00 10 00 00                                       
-        /// 00 00 00 07 00 01 00 00 00 00          00 00 00 07 00 01 00 00 00 00                                       
-        /// 00 00 E0 03 00 00 E0 01 00 00          00 00 E0 03 00 00 E0 01 00 00                                       
-        /// 09 04 00 00 5E 00 08 00 6E 00          09 04 00 00 5E 00 08 00 66 00                                       
-        /// 02 00 72 00 00 00 72 00 07 00          02 00 00 00 00 00 68 00 07 00                                       
-        /// 80 00 00 00 80 00 00 00 80 00          00 00 00 00 00 00 00 00 6F 00                                       
-        /// 04 00 88 00 00 00 88 00 00 00          04 00 00 00 00 00 00 00 00 00                                       
-        /// 00 50 8B E2 B7 8F 88 00 00 00          00 00 00 00 00 00 00 00 00 00                                       
-        /// 88 00 00 00 88 00 00 00 00 00          00 00 00 00 00 00 00 00 00 00                                       
-        /// 00 00 73 00 6B 00 6F 00 73 00          00 00 73 00 6B 00 6F 00 73 00                                       
-        /// 74 00 6F 00 76 00 31 00 73 00          74 00 6F 00 76 00 31 00 73 00                    
-        /// 61 00 4F 00 53 00 51 00 4C 00          61 00 4F 00 53 00 51 00 4C 00                    
-        /// 2D 00 33 00 32 00 4F 00 44 00          2D 00 33 00 32 00 4F 00 44 00                    
-        /// 42 00 43 00                            42 00 43 00                             
         // Pointer to beginning of message
         let start = buf.len();
         let mut header = PacketHeader::new(PacketType::Tds7Login);
         header.status = Status::END_OF_MESSAGE;
+        header.packet = 0;
 
         header.encode(buf);
 
-        let mut offset = OffsetLength::size() + 36;
+        let mut offset = OffsetLength::size();
 
         #[rustfmt::skip]
         buf.extend_from_slice(&[
@@ -115,11 +107,11 @@ impl<'a> Encode for Login<'a> {
             // tds_version: SQL Server 2012 | SQL Server 2014 | SQL Server 2016 | SQL Server 2017 | SQL Server 2019
             0x04, 0, 0, 0x74,
             // packet_size
-            0, 0x10, 0, 0,
+            0, 0, 0x10, 0,
             // client_prog_version
-            0, 0, 0, 7,
+            0, 0, 0, 0,
             // client_pid
-            0, 1, 0, 0,
+            0, 0, 0, 0,
             // conneciton_id
             0, 0, 0, 0,
         ]);
@@ -132,81 +124,31 @@ impl<'a> Encode for Login<'a> {
         #[rustfmt::skip]
         buf.extend_from_slice(&[
             // client_timezone
-            0xE0, 1, 0, 0,
+            0, 0, 0, 0,
             // client_lcid
-            9, 4, 0, 0
+            0, 0, 0, 0
         ]);
 
         // OffsetLength struct as bytes initialized to 0's
         // Updated later when needed
         buf.extend_from_slice(&[0u8; OffsetLength::size() as usize]);
 
-        println!("{:X?}", buf);
-        println!("{}", buf.len());
-        println!("{}", HOSTNAME_OFFSET + PacketHeader::size() + 36);
-        println!("{}", offset);
+        write_offset_str(buf, self.hostname, HOSTNAME_OFFSET, &mut offset);
+        write_offset_str(buf, self.username, USERNAME_OFFSET, &mut offset);
+        write_password(buf, self.password, PASSWORD_OFFSET, &mut offset);
+        write_offset_str(buf, self.appname, APPNAME_OFFSET, &mut offset);
+        write_offset_str(buf, self.servername, SERVERNAME_OFFSET, &mut offset);
+        write_offset_str(buf, "", EXTENSION_OFFSET, &mut offset);
+        write_offset_str(buf, self.ctlintname, CTLINTNAME_OFFSET, &mut offset);
+        write_offset_str(buf, "", LANGUAGE_OFFSET, &mut offset);
+        write_offset_str(buf, "", DATABASE_OFFSET, &mut offset);
+        write_offset_str(buf, "", SSPI_OFFSET, &mut offset);
+        write_offset_str(buf, "", ATTATCHFILE_OFFSET, &mut offset);
+        write_offset_str(buf, "", CHANGEPASSWORD_OFFSET, &mut offset);
 
-        buf[HOSTNAME_OFFSET + PacketHeader::size() + 36
-            ..HOSTNAME_OFFSET + PacketHeader::size() + 36 + 2]
-            .copy_from_slice(&offset.to_le_bytes());
-        buf[HOSTNAME_OFFSET + PacketHeader::size() + 36 + 2
-            ..HOSTNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.hostname.len() as u16).to_le_bytes());
-        for (i, &byte) in self.hostname.as_bytes().iter().enumerate() {
-            buf.push(byte);
-            buf.push(0);
-        }
-        offset += self.hostname.as_bytes().len() as u16 * 2;
-
-        buf[USERNAME_OFFSET + PacketHeader::size() + 36
-            ..USERNAME_OFFSET + PacketHeader::size() + 36 + 2]
-            .copy_from_slice(&offset.to_le_bytes());
-        buf[USERNAME_OFFSET + PacketHeader::size() + 36 + 2
-            ..USERNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.username.len() as u16).to_le_bytes());
-        for (i, &byte) in self.username.as_bytes().iter().enumerate() {
-            buf.push(byte);
-            buf.push(0);
-        }
-        offset += self.username.as_bytes().len() as u16 * 2;
-
-        buf[APPNAME_OFFSET + PacketHeader::size() + 36
-            ..APPNAME_OFFSET + PacketHeader::size() + 36 + 2]
-            .copy_from_slice(&offset.to_le_bytes());
-        buf[APPNAME_OFFSET + PacketHeader::size() + 36 + 2
-            ..APPNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.appname.len() as u16).to_le_bytes());
-        for (i, &byte) in self.appname.as_bytes().iter().enumerate() {
-            buf.push(byte);
-            buf.push(0);
-        }
-        offset += self.appname.as_bytes().len() as u16 * 2;
-
-        buf[CTLINTNAME_OFFSET + PacketHeader::size() + 36
-            ..CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 2]
-            .copy_from_slice(&offset.to_le_bytes());
-        buf[CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 2
-            ..CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.ctlintname.len() as u16).to_le_bytes());
-        for (i, &byte) in self.ctlintname.as_bytes().iter().enumerate() {
-            buf.push(byte);
-            buf.push(0);
-        }
-        offset += self.appname.as_bytes().len() as u16 * 2;
-
-        // buf[PASSWORD_OFFSET + PacketHeader::size() + 36..PASSWORD_OFFSET + PacketHeader::size() + 36 + 2]
-        //     .copy_from_slice(&offset.to_be_bytes());
-        // buf[PASSWORD_OFFSET + PacketHeader::size() + 36 + 2..PASSWORD_OFFSET + PacketHeader::size() + 36 + 4]
-        //     .copy_from_slice(&(self.password.len() as u16 * 2).to_be_bytes());
-        // offset += self.password.as_bytes().len() as u16;
-        // for (i, byte) in self.password.as_bytes().iter().enumerate() {
-        //     // Swap high-low bits
-        //     let byte = (byte << 4) | (byte >> 4);
-        //     // XOR with 0xA5
-        //     let byte = byte ^ 0xA5u8;
-        //     buf.push(byte);
-        //     buf.push(0);
-        // }
+        buf[Login::offset_length_offset() + PacketHeader::size() + CLIENTID_OFFSET
+            ..Login::offset_length_offset() + PacketHeader::size() + CLIENTID_OFFSET + 6]
+            .copy_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
         // // Update `Extension` to point to FeatureExt
         // buf[EXTENSION_OFFSET + PacketHeader::size()..EXTENSION_OFFSET + PacketHeader::size() + 2]
@@ -224,11 +166,9 @@ impl<'a> Encode for Login<'a> {
         // buf.push(TERMINATOR);
 
         // Set length field on the Login structure
-        let len = ((buf.len() - start - PacketHeader::size()) as u32).to_be_bytes();
-        buf[start + PacketHeader::size() + 0] = len[3];
-        buf[start + PacketHeader::size() + 1] = len[2];
-        buf[start + PacketHeader::size() + 2] = len[1];
-        buf[start + PacketHeader::size() + 3] = len[0];
+        let len = buf.len() - start - PacketHeader::size();
+        buf[start + PacketHeader::size()..start + PacketHeader::size() + 4]
+            .copy_from_slice(&(len as u32).to_le_bytes());
 
         // Set length field on the PacketHeader structure
         let len = buf.len() - start;
@@ -236,6 +176,56 @@ impl<'a> Encode for Login<'a> {
 
         println!("{}", hex::encode(&buf));
         dbg!(buf.len());
+    }
+}
+
+impl<'a> Login<'a> {
+    const fn offset_length_offset() -> usize {
+        36
+    }
+}
+
+fn write_password(buf: &mut Vec<u8>, data: &str, field_offset: usize, offset: &mut u16) {
+    let offset_length_offset = Login::offset_length_offset() + PacketHeader::size();
+
+    // Set the offset
+    buf[offset_length_offset + field_offset..offset_length_offset + field_offset + 2]
+        .copy_from_slice(&offset.to_le_bytes());
+
+    // Only update the lenght/offset is there is data
+    if data.as_bytes().len() > 0 {
+        // Set the length of the data portion
+        buf[offset_length_offset + field_offset + 2..offset_length_offset + field_offset + 4]
+            .copy_from_slice(&(data.len() as u16).to_le_bytes());
+
+        for (i, &byte) in data.as_bytes().iter().enumerate() {
+            buf.push((byte << 4) | (byte >> 4) ^ 0xA5u8);
+            buf.push(0xA5u8);
+        }
+
+        *offset = *offset + data.as_bytes().len() as u16 * 2;
+    }
+}
+
+fn write_offset_str(buf: &mut Vec<u8>, data: &str, field_offset: usize, offset: &mut u16) {
+    let offset_length_offset = Login::offset_length_offset() + PacketHeader::size();
+
+    // Set the offset
+    buf[offset_length_offset + field_offset..offset_length_offset + field_offset + 2]
+        .copy_from_slice(&offset.to_le_bytes());
+
+    // Only update the lenght/offset is there is data
+    if data.as_bytes().len() > 0 {
+        // Set the length of the data portion
+        buf[offset_length_offset + field_offset + 2..offset_length_offset + field_offset + 4]
+            .copy_from_slice(&(data.len() as u16).to_le_bytes());
+        // Hack: UTF8 -> UTF16-LE encoding
+        for (i, &byte) in data.as_bytes().iter().enumerate() {
+            buf.push(byte);
+            buf.push(0);
+        }
+
+        *offset = *offset + data.as_bytes().len() as u16 * 2;
     }
 }
 
@@ -287,7 +277,7 @@ bitflags! {
 
 impl Default for OptionFlags1 {
     fn default() -> Self {
-        OptionFlags1::from_bits_truncate(0xE0)
+        OptionFlags1::from_bits_truncate(0x10)
     }
 }
 
@@ -331,7 +321,7 @@ bitflags! {
 
 impl Default for OptionFlags2 {
     fn default() -> Self {
-        OptionFlags2::from_bits_truncate(0x03)
+        OptionFlags2::from_bits_truncate(0x00)
     }
 }
 

@@ -54,12 +54,13 @@ async fn establish(stream: &mut MsSqlStream, url: &Url) -> crate::Result<()> {
     dbg!(prelogin_resp);
 
     let login = Login {
-        hostname: "skostov1",
-        username: "sa",
+        hostname: "",
+        username: "",
         password: "",
+        servername: "",
         database: "",
-        appname: "OSQL-32",
-        ctlintname: "ODBC",
+        appname: "",
+        ctlintname: "",
     };
 
     stream.write(login);
