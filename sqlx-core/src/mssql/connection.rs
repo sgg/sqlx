@@ -15,7 +15,7 @@ pub struct MsSqlConnection {
 }
 
 impl MsSqlConnection {
-    pub async fn new(url: std::result::Result<Url, url::ParseError>) -> crate::Result<MsSql, Self> {
+    pub async fn new(url: std::result::Result<Url, url::ParseError>) -> crate::Result<Self> {
         let url = url?;
         let mut stream = MsSqlStream::new(&url).await?;
 
@@ -26,7 +26,7 @@ impl MsSqlConnection {
 }
 
 impl Connect for MsSqlConnection {
-    fn connect<T>(url: T) -> BoxFuture<'static, crate::Result<MsSql, MsSqlConnection>>
+    fn connect<T>(url: T) -> BoxFuture<'static, crate::Result<MsSqlConnection>>
     where
         T: TryInto<Url, Error = url::ParseError>,
         Self: Sized,
@@ -36,16 +36,16 @@ impl Connect for MsSqlConnection {
 }
 
 impl Connection for MsSqlConnection {
-    fn close(self) -> BoxFuture<'static, crate::Result<MsSql, ()>> {
+    fn close(self) -> BoxFuture<'static, crate::Result<()>> {
         Box::pin(async move { Ok(()) })
     }
 
-    fn ping(&mut self) -> BoxFuture<crate::Result<MsSql, ()>> {
+    fn ping(&mut self) -> BoxFuture<crate::Result<()>> {
         Box::pin(async move { Ok(()) })
     }
 }
 
-async fn establish(stream: &mut MsSqlStream, url: &Url) -> crate::Result<MsSql, ()> {
+async fn establish(stream: &mut MsSqlStream, url: &Url) -> crate::Result<()> {
     stream.write(Prelogin::default());
     stream.flush().await?;
 

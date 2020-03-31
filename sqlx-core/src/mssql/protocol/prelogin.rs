@@ -63,7 +63,7 @@ impl Default for Encryption {
 }
 
 impl Encryption {
-    pub(crate) fn read(buf: &[u8]) -> crate::Result<MsSql, Self> {
+    pub(crate) fn read(buf: &[u8]) -> crate::Result<Self> {
         use Encryption::*;
 
         match buf[0] {
@@ -194,7 +194,7 @@ impl<'de> Encode for Prelogin<'de> {
 // We need to be able to decode a PreLogin packet because it is what the server response with
 // to a PreLogin request. However, the packet type is not 0x12, but 0x4 in the response.
 impl<'de> Prelogin<'de> {
-    pub(crate) fn read(mut buf: &'de [u8]) -> crate::Result<MsSql, Self> {
+    pub(crate) fn read(mut buf: &'de [u8]) -> crate::Result<Self> {
         let mut version = None;
         let mut encryption = None;
         let mut options: Vec<PreloginOption> = Vec::new();

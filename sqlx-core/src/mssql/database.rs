@@ -1,4 +1,7 @@
-use crate::database::{Database, HasCursor, HasRawValue, HasRow};
+use crate::cursor::HasCursor;
+use crate::database::Database;
+use crate::row::HasRow;
+use crate::value::HasRawValue;
 
 /// **MsSql** database driver.
 #[derive(Debug)]
@@ -31,5 +34,7 @@ impl<'c, 'q> HasCursor<'c, 'q> for MsSql {
 }
 
 impl<'c> HasRawValue<'c> for MsSql {
-    type RawValue = Option<super::MsSqlValue<'c>>;
+    type Database = MsSql;
+
+    type RawValue = super::MsSqlValue<'c>;
 }

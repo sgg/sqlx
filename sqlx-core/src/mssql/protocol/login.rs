@@ -99,7 +99,6 @@ impl<'a> Encode for Login<'a> {
         /// 61 00 4F 00 53 00 51 00 4C 00          61 00 4F 00 53 00 51 00 4C 00                    
         /// 2D 00 33 00 32 00 4F 00 44 00          2D 00 33 00 32 00 4F 00 44 00                    
         /// 42 00 43 00                            42 00 43 00                             
-
         // Pointer to beginning of message
         let start = buf.len();
         let mut header = PacketHeader::new(PacketType::Tds7Login);
@@ -152,7 +151,7 @@ impl<'a> Encode for Login<'a> {
             .copy_from_slice(&offset.to_le_bytes());
         buf[HOSTNAME_OFFSET + PacketHeader::size() + 36 + 2
             ..HOSTNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.hostname.len()  as u16).to_le_bytes());
+            .copy_from_slice(&(self.hostname.len() as u16).to_le_bytes());
         for (i, &byte) in self.hostname.as_bytes().iter().enumerate() {
             buf.push(byte);
             buf.push(0);
@@ -164,7 +163,7 @@ impl<'a> Encode for Login<'a> {
             .copy_from_slice(&offset.to_le_bytes());
         buf[USERNAME_OFFSET + PacketHeader::size() + 36 + 2
             ..USERNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.username.len()  as u16).to_le_bytes());
+            .copy_from_slice(&(self.username.len() as u16).to_le_bytes());
         for (i, &byte) in self.username.as_bytes().iter().enumerate() {
             buf.push(byte);
             buf.push(0);
@@ -176,7 +175,7 @@ impl<'a> Encode for Login<'a> {
             .copy_from_slice(&offset.to_le_bytes());
         buf[APPNAME_OFFSET + PacketHeader::size() + 36 + 2
             ..APPNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.appname.len()  as u16).to_le_bytes());
+            .copy_from_slice(&(self.appname.len() as u16).to_le_bytes());
         for (i, &byte) in self.appname.as_bytes().iter().enumerate() {
             buf.push(byte);
             buf.push(0);
@@ -188,7 +187,7 @@ impl<'a> Encode for Login<'a> {
             .copy_from_slice(&offset.to_le_bytes());
         buf[CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 2
             ..CTLINTNAME_OFFSET + PacketHeader::size() + 36 + 4]
-            .copy_from_slice(&(self.ctlintname.len()  as u16).to_le_bytes());
+            .copy_from_slice(&(self.ctlintname.len() as u16).to_le_bytes());
         for (i, &byte) in self.ctlintname.as_bytes().iter().enumerate() {
             buf.push(byte);
             buf.push(0);

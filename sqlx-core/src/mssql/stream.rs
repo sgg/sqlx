@@ -22,7 +22,7 @@ pub(crate) struct MsSqlStream {
 }
 
 impl MsSqlStream {
-    pub(super) async fn new(url: &Url) -> crate::Result<MsSql, Self> {
+    pub(super) async fn new(url: &Url) -> crate::Result<Self> {
         let stream = MaybeTlsStream::connect(&url, 1433).await?;
 
         Ok(Self {
@@ -33,7 +33,7 @@ impl MsSqlStream {
     }
 
     #[inline]
-    pub(super) async fn send<T>(&mut self, packet: T, initial: bool) -> crate::Result<MsSql, ()>
+    pub(super) async fn send<T>(&mut self, packet: T, initial: bool) -> crate::Result<()>
     where
         T: Encode + std::fmt::Debug,
     {
@@ -42,7 +42,7 @@ impl MsSqlStream {
     }
 
     #[inline]
-    pub(super) async fn flush(&mut self) -> crate::Result<MsSql, ()> {
+    pub(super) async fn flush(&mut self) -> crate::Result<()> {
         Ok(self.stream.flush().await?)
     }
 
@@ -56,13 +56,13 @@ impl MsSqlStream {
     }
 
     #[inline]
-    pub(super) async fn receive(&mut self) -> crate::Result<MsSql, &Vec<u8>> {
+    pub(super) async fn receive(&mut self) -> crate::Result<&Vec<u8>> {
         self.read().await?;
 
         Ok(&self.packet)
     }
 
-    pub(super) async fn read(&mut self) -> crate::Result<MsSql, ()> {
+    pub(super) async fn read(&mut self) -> crate::Result<()> {
         let header = self.stream.peek(8_usize).await?;
         dbg!(&header);
 

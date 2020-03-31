@@ -158,7 +158,7 @@ impl Encode for PacketHeader {
 }
 
 impl PacketHeader {
-    pub(crate) fn read(mut buf: &[u8]) -> crate::Result<MsSql, Self> {
+    pub(crate) fn read(mut buf: &[u8]) -> crate::Result<Self> {
         Ok(Self {
             r#type: PacketType::from(buf.get_u8()?),
             status: Status::from_bits_truncate(buf.get_u8()?),
