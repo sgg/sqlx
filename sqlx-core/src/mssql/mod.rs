@@ -1,5 +1,8 @@
 //! **MsSQL** database and connection types.
 
+// Microsoft SQL Server uses the Tabular Data Stream (TDS) protocol
+// <https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-tds/b46a581a-39de-4745-b076-ec4dbb7d13ec>
+
 pub use arguments::MsSqlArguments;
 pub use connection::MsSqlConnection;
 pub use cursor::MsSqlCursor;
@@ -15,6 +18,7 @@ mod cursor;
 mod database;
 mod error;
 mod executor;
+pub(crate) mod message;
 mod protocol;
 mod row;
 mod stream;

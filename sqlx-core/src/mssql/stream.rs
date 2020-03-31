@@ -75,6 +75,7 @@ impl MsSqlStream {
 
         let payload = self.stream.peek(18).await?;
         dbg!(payload);
+
         self.packet = payload.to_vec();
 
         self.stream.consume(length as usize);
