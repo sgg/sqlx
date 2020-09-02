@@ -4,7 +4,7 @@ use heck::KebabCase;
 use log::*;
 use serde::{Deserialize, Serialize};
 use sqlx::pool::PoolConnection;
-use sqlx::{Connect, Connection};
+use sqlx::{Connect, Connection, Database};
 use tide::{Error, IntoResponse, Request, Response, ResultExt};
 
 use crate::api::model::*;
@@ -110,9 +110,11 @@ struct MultipleCommentsResponseBody {
 /// Retrieve all articles
 ///
 /// [List Articles](https://github.com/gothinkster/realworld/tree/master/api#list-articles)
-pub async fn list_articles(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn list_articles<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let state = req.state();
 
@@ -152,9 +154,11 @@ pub async fn list_articles(
 /// Get Article
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#get-article
-pub async fn get_article(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn get_article<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let authenticated = optionally_auth(&req).transpose()?;
 
@@ -192,9 +196,11 @@ pub async fn get_article(
 /// Create Article
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#create-article
-pub async fn create_article(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn create_article<DB>(
+    mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         #[derive(Deserialize)]
         struct ArticleRequestBody {
@@ -268,9 +274,11 @@ pub async fn create_article(
 /// Delete Article
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#delete-article
-pub async fn delete_article(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn delete_article<DB>(
+    mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let (user_id, _) = extract_and_validate_token(&req)?;
 
@@ -302,9 +310,11 @@ pub async fn delete_article(
 /// Update the title, description, and/or body of an Article
 ///
 /// [Update Article](https://github.com/gothinkster/realworld/tree/master/api#update-article)
-pub async fn update_article(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn update_article<DB>(
+    mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         #[derive(Deserialize)]
         struct UpdateArticleBody {
@@ -378,9 +388,11 @@ pub async fn update_article(
 /// Add a comment to an an article
 ///
 /// [Add Comments to an Article](https://github.com/gothinkster/realworld/tree/master/api#add-comments-to-an-article)
-pub async fn add_comment(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn add_comment<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         #[derive(Deserialize)]
         struct CommentRequestBody {
@@ -428,9 +440,11 @@ pub async fn add_comment(
 /// Get the comments placed on an article
 ///
 /// [Get Comments from an Article](https://github.com/gothinkster/realworld/tree/master/api#get-comments-from-an-article)
-pub async fn get_comments(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn get_comments<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let authenticated = optionally_auth(&req).transpose()?;
 
@@ -464,9 +478,11 @@ pub async fn get_comments(
     .unwrap_or_else(IntoResponse::into_response)
 }
 
-pub async fn delete_comment(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn delete_comment<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let (user_id, _) = extract_and_validate_token(&req)?;
 
@@ -499,9 +515,11 @@ pub async fn delete_comment(
 /// Favorite Article
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#favorite-article
-pub async fn favorite_article(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn favorite_article<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     should_favorite(req, true)
         .await
         .unwrap_or_else(IntoResponse::into_response)
@@ -510,18 +528,22 @@ pub async fn favorite_article(
 /// Unfavorite Article
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#favorite-article
-pub async fn unfavorite_article(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn unfavorite_article<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     should_favorite(req, false)
         .await
         .unwrap_or_else(IntoResponse::into_response)
 }
 
-async fn should_favorite(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
+async fn should_favorite<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
     should_favorite: bool,
-) -> tide::Result<Response> {
+) -> tide::Result<Response>
+    where DB: Connect + ProvideData + Database
+{
     let (user_id, _) = extract_and_validate_token(&req)?;
     let slug = req.param::<String>("slug").client_err()?;
 
@@ -560,9 +582,11 @@ async fn should_favorite(
 /// Feed Articles
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#feed-articles
-pub async fn get_feed(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn get_feed<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let (user_id, _) = extract_and_validate_token(&req)?;
 
@@ -598,9 +622,11 @@ pub async fn get_feed(
 /// Get Tags
 ///
 /// https://github.com/gothinkster/realworld/tree/master/api#get-tags
-pub async fn get_tags(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn get_tags<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let state = req.state();
         let mut db = state.conn().await.server_err()?;

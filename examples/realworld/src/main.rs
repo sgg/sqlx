@@ -1,11 +1,11 @@
 use async_std::net::ToSocketAddrs;
 
 use sqlx::pool::PoolConnection;
-use sqlx_example_realworld::api::{articles, profiles, users};
+use sqlx_example_realworld::api::{/*articles, profiles, */ users};
 use sqlx_example_realworld::db;
 use sqlx_example_realworld::db::model::{ProvideAuthn, ProvideData};
 use sqlx_example_realworld::db::Db;
-use tide::middleware::RequestLogger;
+use tide::log::LogMiddleware;
 
 #[derive(structopt::StructOpt)]
 struct Args {
@@ -22,14 +22,15 @@ struct Args {
 async fn run_server<S, C>(addr: impl ToSocketAddrs, state: S) -> anyhow::Result<()>
 where
     S: Send + Sync + Db<Conn = PoolConnection<C>> + 'static,
-    C: sqlx::Connect + ProvideAuthn + ProvideData,
+    C: sqlx::Connect + ProvideAuthn + ProvideData + sqlx::Database,
 {
     let mut server = tide::with_state(state);
 
-    server.middleware(RequestLogger::new());
-
+    server.middleware(LogMiddleware::new());
     // users
     server.at("/api/users").post(users::register);
+    /*
+
     server.at("/api/users/login").post(users::login);
     server
         .at("/api/user")
@@ -75,6 +76,7 @@ where
 
     // tags
     server.at("/api/tags").get(articles::get_tags);
+    */
 
     server.listen(addr).await?;
 

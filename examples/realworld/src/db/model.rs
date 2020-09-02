@@ -37,6 +37,8 @@ pub trait ProvideAuthn {
     async fn update_user(&mut self, updated: &UserEntity) -> ProvideResult<()>;
 }
 
+
+
 /// A profile for an author of an article or comment
 ///
 /// These should map 1:1 with users
@@ -189,7 +191,7 @@ impl From<SqlxError> for ProvideError {
             SqlxError::Database(db_err) => {
                 #[cfg(feature = "postgres")]
                 {
-                    if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgError>() {
+                    if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
                         if let Ok(provide_err) = ProvideError::try_from(pg_err) {
                             return provide_err;
                         }

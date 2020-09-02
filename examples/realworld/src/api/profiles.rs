@@ -2,7 +2,7 @@ use futures::TryFutureExt;
 use log::*;
 use serde::Serialize;
 use sqlx::pool::PoolConnection;
-use sqlx::{Connect, Connection};
+use sqlx::{Connect, Connection, Database};
 use tide::{Error, IntoResponse, Request, Response, ResultExt};
 
 use crate::api::model::*;
@@ -24,9 +24,11 @@ impl From<Profile> for ProfileResponseBody {
 /// Retrieve a profile by username
 ///
 /// [Get Profile](https://github.com/gothinkster/realworld/tree/master/api#get-profile)
-pub async fn get_profile(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn get_profile<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     async move {
         let authenticated = optionally_auth(&req).transpose()?;
 
@@ -63,9 +65,11 @@ pub async fn get_profile(
 /// Follow a user
 ///
 /// [Follow User](https://github.com/gothinkster/realworld/tree/master/api#follow-user)
-pub async fn follow_user(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn follow_user<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     should_follow(req, true)
         .await
         .unwrap_or_else(IntoResponse::into_response)
@@ -74,19 +78,23 @@ pub async fn follow_user(
 /// Stop following a user
 ///
 /// [Unfollow User](https://github.com/gothinkster/realworld/tree/master/api#unfollow-user)
-pub async fn unfollow_user(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
-) -> Response {
+pub async fn unfollow_user<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideData + Database
+{
     should_follow(req, false)
         .await
         .unwrap_or_else(IntoResponse::into_response)
 }
 
 /// Adds or removes a following relationship
-async fn should_follow(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideData>>>,
+async fn should_follow<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
     should_follow: bool,
-) -> tide::Result<Response> {
+) -> tide::Result<Response>
+    where DB: Connect + ProvideData + Database
+{
     let (user_id, _) = extract_and_validate_token(&req)?;
 
     let leader_username = req.param::<String>("username").client_err()?;

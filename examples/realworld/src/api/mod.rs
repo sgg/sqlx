@@ -1,5 +1,5 @@
 /// Route handlers for the /api/articles APIs
-pub mod articles;
+//TODO: uncomment pub mod articles;
 
 /// Models for objects returned by the web API
 ///
@@ -8,7 +8,7 @@ pub mod articles;
 pub mod model;
 
 /// Route handlers for the /profiles API
-pub mod profiles;
+//TODO: uncomment pub mod profiles;
 
 /// Route handlers for the /user(s) APIs
 pub mod users;

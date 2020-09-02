@@ -3,8 +3,8 @@ use std::convert::TryFrom;
 use async_trait::async_trait;
 use sqlx::error::DatabaseError;
 use sqlx::pool::PoolConnection;
-use sqlx::postgres::PgError;
-use sqlx::{PgConnection, PgPool};
+use sqlx::postgres::PgDatabaseError;
+use sqlx::{PgConnection, PgPool, Postgres, Pool};
 
 use crate::db::model::*;
 use crate::db::Db;
@@ -15,7 +15,7 @@ pub async fn connect(db_url: &str) -> sqlx::Result<PgPool> {
     Ok(pool)
 }
 
-impl TryFrom<&PgError> for ProvideError {
+impl TryFrom<&PgDatabaseError> for ProvideError {
     type Error = ();
 
     /// Attempt to convert a Postgres error into a generic ProvideError
@@ -23,8 +23,8 @@ impl TryFrom<&PgError> for ProvideError {
     /// Unexpected cases will be bounced back to the caller for handling
     ///
     /// * [Postgres Error Codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)
-    fn try_from(pg_err: &PgError) -> Result<Self, Self::Error> {
-        let provider_err = match pg_err.code().unwrap() {
+    fn try_from(pg_err: &PgDatabaseError) -> Result<Self, Self::Error> {
+        let provider_err = match pg_err.code() {
             "23505" => ProvideError::UniqueViolation(pg_err.details().unwrap().to_owned()),
             code if code.starts_with("23") => {
                 ProvideError::ModelViolation(pg_err.message().to_owned())
@@ -36,14 +36,16 @@ impl TryFrom<&PgError> for ProvideError {
     }
 }
 
+/*
 #[async_trait]
 impl Db for PgPool {
-    type Conn = PoolConnection<PgConnection>;
+    type Conn = PoolConnection<Postgres>;
 
     async fn conn(&self) -> sqlx::Result<Self::Conn> {
         self.acquire().await
     }
 }
+*/
 
 #[async_trait]
 impl ProvideAuthn for PgConnection {

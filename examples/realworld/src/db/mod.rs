@@ -18,11 +18,36 @@ pub mod model;
 /// A type that abstracts a database
 #[async_trait]
 pub trait Db {
-    /// A connection to the database
+    /// The type of connection returned by the database
     type Conn;
 
     /// Establish a connection with the database
     async fn conn(&self) -> sqlx::Result<Self::Conn>;
+}
+
+#[async_trait]
+pub(crate) trait DbPool {
+    type Conn;
+
+    async fn conn(&self) -> sqlx::Result<Self::Conn>;
+}
+
+#[async_trait]
+impl<DB: sqlx::Database> DbPool for sqlx::Pool<DB> {
+    type Conn = sqlx::pool::PoolConnection<DB>;
+
+    async fn conn(&self) -> sqlx::Result<Self::Conn> {
+        self.acquire().await
+    }
+}
+
+#[async_trait]
+impl<DB: sqlx::Database> Db for sqlx::Pool<DB> {
+    type Conn = sqlx::pool::PoolConnection<DB>;
+
+    async fn conn(&self) -> sqlx::Result<Self::Conn> {
+        self.acquire().await
+    }
 }
 
 /// Create a batch insert statement

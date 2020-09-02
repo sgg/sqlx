@@ -6,8 +6,8 @@ use log::*;
 use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::pool::PoolConnection;
-use sqlx::{Connect, Connection};
-use tide::{Error, IntoResponse, Request, Response, ResultExt};
+use sqlx::{Connect, Connection, Database, Pool};
+use tide::{Error, Request, Response, StatusCode};
 
 use crate::api::util::{extract_and_validate_token, to_json_response, TokenClaims, SECRET_KEY};
 use crate::db::model::{ProvideAuthn, UserEntity};
@@ -122,70 +122,75 @@ impl From<UserEntity> for User {
 /// Register a new user
 ///
 /// [Registration](https://github.com/gothinkster/realworld/tree/master/api#registration)
-pub async fn register(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideAuthn>>>,
-) -> Response {
-    async {
-        #[derive(Deserialize)]
-        struct RegisterRequestBody {
-            user: NewUser,
-        }
-        #[derive(Deserialize)]
-        struct NewUser {
-            username: String,
-            email: String,
-            password: String,
-        }
-
-        // n.b. we don't use req.body_json() because it swallows serde's useful error messages
-        let body = req.body_bytes().await.server_err()?;
-
-        let RegisterRequestBody {
-            user:
-                NewUser {
-                    username,
-                    email,
-                    password,
-                },
-        } = serde_json::from_slice(&body)
-            .map_err(|e| Response::new(400).body_string(e.to_string()))?;
-
-        let hashed_password = hash_password(&password).server_err()?;
-
-        let state = req.state();
-        let mut db = state.conn().await.server_err()?;
-
-        let id = db.create_user(&username, &email, &hashed_password).await?;
-
-        // n.b. token creation is a soft-failure as the user can try logging in separately
-        let token = generate_token(id)
-            .map_err(|e| {
-                warn!("Failed to create auth token -- {}", e);
-                e
-            })
-            .ok();
-
-        let user = User {
-            email,
-            token,
-            username,
-            bio: None,
-            image: None,
-        };
-        let resp = to_json_response(&UserResponseBody::from(user))?;
-
-        Ok::<_, Error>(resp)
+pub async fn register<DB, C>(
+    //mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+    mut req: Request<Pool<DB>>
+) -> tide::Result<Response>
+    //where DB: Connect + ProvideAuthn + Database
+    where DB: Database<Connection=C>,
+            C: Connect<Database = DB> + ProvideAuthn
+{
+    #[derive(Deserialize)]
+    struct RegisterRequestBody {
+        user: NewUser,
     }
-    .await
-    .unwrap_or_else(IntoResponse::into_response)
+    #[derive(Deserialize)]
+    struct NewUser {
+        username: String,
+        email: String,
+        password: String,
+    }
+
+    // n.b. we don't use req.body_json() because it swallows serde's useful error messages
+    let body = req.body_bytes().await?;
+
+    let RegisterRequestBody {
+        user:
+        NewUser {
+            username,
+            email,
+            password,
+        },
+    } = serde_json::from_slice(&body)
+        .map_err(|e| tide::Error::new(StatusCode::BadRequest, e))?;
+
+    let hashed_password = hash_password(&password)?;
+
+    let state = req.state();
+    let mut db = state.acquire().await?;
+
+    let id = db.create_user(&username, &email, &hashed_password).await?;
+
+    // n.b. token creation is a soft-failure as the user can try logging in separately
+    let token = generate_token(id)
+        .map_err(|e| {
+            warn!("Failed to create auth token -- {}", e);
+            e
+        })
+        .ok();
+
+    let user = User {
+        email,
+        token,
+        username,
+        bio: None,
+        image: None,
+    };
+
+    let resp = to_json_response(&UserResponseBody::from(user), StatusCode::Created);
+
+    Ok(resp)
 }
+/*
 
 /// Get the current user based on their authorization
 ///
 /// [Get Current User](https://github.com/gothinkster/realworld/tree/master/api#get-current-user)
-pub async fn get_current_user(
-    req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideAuthn>>>,
-) -> Response {
+pub async fn get_current_user<DB>(
+    req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideAuthn + Database
+{
     async move {
         let (user_id, token) = extract_and_validate_token(&req)?;
 
@@ -208,10 +213,12 @@ pub async fn get_current_user(
 /// Login to Conduit
 ///
 /// [Login](https://github.com/gothinkster/realworld/tree/master/api#authentication)
-pub async fn login(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideAuthn>>>,
-) -> Response {
-    async move {
+pub async fn login<DB>(
+    mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> Response
+    where DB: Connect + ProvideAuthn + Database
+{
+async move {
         #[derive(Deserialize)]
         struct LoginRequestBody {
             user: Creds,
@@ -272,63 +279,66 @@ pub async fn login(
 /// Update a user's email, bio, or image
 ///
 /// [Update User](https://github.com/gothinkster/realworld/tree/master/api#update-user)
-pub async fn update_user(
-    mut req: Request<impl Db<Conn = PoolConnection<impl Connect + ProvideAuthn>>>,
-) -> Response {
-    async move {
-        #[derive(Deserialize)]
-        struct UpdateRequestBody {
-            user: UserUpdate,
-        }
-
-        #[derive(Deserialize)]
-        struct UserUpdate {
-            email: Option<String>,
-            #[serde(default)]
-            bio: Nullable<String>,
-            #[serde(default)]
-            image: Nullable<String>,
-        }
-        let (user_id, _) = extract_and_validate_token(&req)?;
-
-        let body = req.body_json().await.server_err()?;
-
-        let state = req.state();
-        let mut tx = state
-            .conn()
-            .and_then(Connection::begin)
-            .await
-            .server_err()?;
-
-        let updated = {
-            let UpdateRequestBody {
-                user: UserUpdate { email, bio, image },
-            } = body;
-
-            let existing = tx.get_user_by_id(user_id).await?;
-            UserEntity {
-                email: email.unwrap_or(existing.email),
-                bio: bio.or(existing.bio),
-                image: image.or(existing.image),
-                ..existing
-            }
-        };
-
-        debug!("Updating user {}", user_id);
-        tx.update_user(&updated).await?;
-        debug!(
-            "Successfully updated user {}. Committing Transaction.",
-            user_id
-        );
-        tx.commit().await.server_err()?;
-
-        let resp = to_json_response(&UserResponseBody::from(User::from(updated)))?;
-
-        Ok::<_, Error>(resp)
+pub async fn update_user<DB>(
+    mut req: Request<impl Db<Conn = PoolConnection<DB>>>,
+) -> tide::Result<Response>
+    where DB: Connect + ProvideAuthn + Database
+{
+    #[derive(Deserialize)]
+    struct UpdateRequestBody {
+        user: UserUpdate,
     }
-    .await
-    .unwrap_or_else(IntoResponse::into_response)
+
+    #[derive(Deserialize)]
+    struct UserUpdate {
+        email: Option<String>,
+        #[serde(default)]
+        bio: Nullable<String>,
+        #[serde(default)]
+        image: Nullable<String>,
+    }
+    let (user_id, _) = extract_and_validate_token(&req)?;
+
+    let body = req.body_json().await.server_err()?;
+
+    let state = req.state();
+    let foo = state.conn().await?;
+    unimplemented!();
+    /*
+    let mut tx = state
+        .conn()
+        .and_then(Connection::begin)
+        .await
+        .server_err()?;
+     */
+
+    let updated = {
+        let UpdateRequestBody {
+            user: UserUpdate { email, bio, image },
+        } = body;
+
+        let existing = tx.get_user_by_id(user_id).await?;
+        UserEntity {
+            email: email.unwrap_or(existing.email),
+            bio: bio.or(existing.bio),
+            image: image.or(existing.image),
+            ..existing
+        }
+    };
+
+    debug!("Updating user {}", user_id);
+    tx.update_user(&updated).await?;
+    debug!(
+        "Successfully updated user {}. Committing Transaction.",
+        user_id
+    );
+    tx.commit().await.server_err()?;
+
+    let resp = to_json_response(&UserResponseBody::from(User::from(updated)))?;
+
+    Ok::<_, Error>(resp)
 }
+*/
 
 /// Hashes and salts a password for storage in a DB
 fn hash_password(password: &str) -> argon2::Result<String> {
